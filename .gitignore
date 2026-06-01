@@ -1,0 +1,25 @@
+# ── Dossiers TPs et cours (hors scope du projet) ─────────────────────────
+TP1/
+TP2/
+TP3/
+TIFO/
+SujetTP/
+Cours/
+
+# ── Textures binaires (trop lourdes) ──────────────────────────────────────
+*.tga
+*.bmp
+*.png
+*.jpg
+
+# ── Binaires compilés ─────────────────────────────────────────────────────
+Projet/cartoon
+**/*.o
+
+# ── Divers ────────────────────────────────────────────────────────────────
+*.tar.bz2
+*.tar.gz
+*~
+*.tmp
+.vscode/
+.idea/
