@@ -1,5 +1,6 @@
 #include "mesh.hh"
 #include <cmath>
+#include <array>
 
 static const float PI = 3.14159265f;
 
@@ -75,23 +76,91 @@ Mesh* Mesh::make_sphere(int rings, int sectors, float radius) {
     return m;
 }
 
-// ─── cylindre ouvert ──────────────────────────────────────────────────────
-Mesh* Mesh::make_cylinder(int n, float radius, float height) {
+// ─── cylindre avec caps ───────────────────────────────────────────────────
+Mesh* Mesh::make_cylinder(int n, float radius, float height, bool with_caps) {
     Mesh* m = new Mesh();
+    // Normales moyennées flanc+cap pour le mesh outline (with_caps=false) :
+    // pousse les arêtes en diagonale → l'outline descend sous la cap et crée
+    // un anneau noir visible tout autour de l'arête du disque.
+    const float inv_sq2 = 1.0f / std::sqrt(2.0f);
+    const float nr  = with_caps ? 1.0f : inv_sq2;  // composante radiale
+    const float nyt = with_caps ? 0.0f :  inv_sq2; // ny arête haute
+    const float nyb = with_caps ? 0.0f : -inv_sq2; // ny arête basse
+
     for (int i = 0; i < n; i++) {
         float t0=2*PI*i/n, t1=2*PI*(i+1)/n;
         float x0=radius*std::cos(t0), z0=radius*std::sin(t0);
         float x1=radius*std::cos(t1), z1=radius*std::sin(t1);
         float u0=(float)i/n, u1=(float)(i+1)/n;
 
-        // Triangle 1 : A, D, C
-        push3(m->positions,x0,-height/2,z0); push3(m->normals,x0/radius,0,z0/radius); push2(m->uvs,u0,0);
-        push3(m->positions,x0, height/2,z0); push3(m->normals,x0/radius,0,z0/radius); push2(m->uvs,u0,1);
-        push3(m->positions,x1, height/2,z1); push3(m->normals,x1/radius,0,z1/radius); push2(m->uvs,u1,1);
-        // Triangle 2 : A, C, B
-        push3(m->positions,x0,-height/2,z0); push3(m->normals,x0/radius,0,z0/radius); push2(m->uvs,u0,0);
-        push3(m->positions,x1, height/2,z1); push3(m->normals,x1/radius,0,z1/radius); push2(m->uvs,u1,1);
-        push3(m->positions,x1,-height/2,z1); push3(m->normals,x1/radius,0,z1/radius); push2(m->uvs,u1,0);
+        // Flanc — Triangle 1 : A, D, C
+        push3(m->positions,x0,-height/2,z0); push3(m->normals,x0/radius*nr,nyb,z0/radius*nr); push2(m->uvs,u0,0);
+        push3(m->positions,x0, height/2,z0); push3(m->normals,x0/radius*nr,nyt,z0/radius*nr); push2(m->uvs,u0,1);
+        push3(m->positions,x1, height/2,z1); push3(m->normals,x1/radius*nr,nyt,z1/radius*nr); push2(m->uvs,u1,1);
+        // Flanc — Triangle 2 : A, C, B
+        push3(m->positions,x0,-height/2,z0); push3(m->normals,x0/radius*nr,nyb,z0/radius*nr); push2(m->uvs,u0,0);
+        push3(m->positions,x1, height/2,z1); push3(m->normals,x1/radius*nr,nyt,z1/radius*nr); push2(m->uvs,u1,1);
+        push3(m->positions,x1,-height/2,z1); push3(m->normals,x1/radius*nr,nyb,z1/radius*nr); push2(m->uvs,u1,0);
+
+        if (with_caps) {
+            float cu0=0.5f+0.5f*std::cos(t0), cv0=0.5f+0.5f*std::sin(t0);
+            float cu1=0.5f+0.5f*std::cos(t1), cv1=0.5f+0.5f*std::sin(t1);
+            // Cap haut
+            push3(m->positions,0, height/2, 0); push3(m->normals,0,1,0); push2(m->uvs,.5f,.5f);
+            push3(m->positions,x1,height/2,z1); push3(m->normals,0,1,0); push2(m->uvs,cu1,cv1);
+            push3(m->positions,x0,height/2,z0); push3(m->normals,0,1,0); push2(m->uvs,cu0,cv0);
+            // Cap bas
+            push3(m->positions,0,-height/2, 0); push3(m->normals,0,-1,0); push2(m->uvs,.5f,.5f);
+            push3(m->positions,x0,-height/2,z0); push3(m->normals,0,-1,0); push2(m->uvs,cu0,cv0);
+            push3(m->positions,x1,-height/2,z1); push3(m->normals,0,-1,0); push2(m->uvs,cu1,cv1);
+        }
+    }
+    return m;
+}
+
+// ─── tore ─────────────────────────────────────────────────────────────────
+// R = rayon majeur (centre → centre du tube)
+// r = rayon mineur (rayon du tube)
+// P(u,v) = ((R + r·cos v)·cos u,  r·sin v,  (R + r·cos v)·sin u)
+// Normale = (cos v·cos u,  sin v,  cos v·sin u)
+Mesh* Mesh::make_torus(int rings, int sectors, float R, float r) {
+    Mesh* m = new Mesh();
+
+    for (int i = 0; i < rings; i++) {
+        float u0 = 2*PI * i       / rings;
+        float u1 = 2*PI * (i + 1) / rings;
+
+        for (int j = 0; j < sectors; j++) {
+            float v0 = 2*PI * j       / sectors;
+            float v1 = 2*PI * (j + 1) / sectors;
+
+            auto P = [&](float u, float v) -> std::array<float,3> {
+                return { (R + r*std::cos(v))*std::cos(u),
+                          r*std::sin(v),
+                         (R + r*std::cos(v))*std::sin(u) };
+            };
+            auto N = [](float u, float v) -> std::array<float,3> {
+                return { std::cos(v)*std::cos(u),
+                         std::sin(v),
+                         std::cos(v)*std::sin(u) };
+            };
+
+            // CCW vu de l'extérieur : A(u0,v0), D(u0,v1), C(u1,v1), B(u1,v0)
+            // Triangle 1 : A, D, C
+            // Triangle 2 : A, C, B
+            auto emit = [&](float u, float v, float fu, float fv) {
+                auto p = P(u,v); auto n = N(u,v);
+                push3(m->positions, p[0], p[1], p[2]);
+                push3(m->normals,   n[0], n[1], n[2]);
+                push2(m->uvs, fu, fv);
+            };
+
+            float fu0=(float)i/rings, fu1=(float)(i+1)/rings;
+            float fv0=(float)j/sectors, fv1=(float)(j+1)/sectors;
+
+            emit(u0,v0,fu0,fv0); emit(u0,v1,fu0,fv1); emit(u1,v1,fu1,fv1);
+            emit(u0,v0,fu0,fv0); emit(u1,v1,fu1,fv1); emit(u1,v0,fu1,fv0);
+        }
     }
     return m;
 }

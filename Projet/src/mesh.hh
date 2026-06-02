@@ -13,7 +13,10 @@ public:
 
     // Génération procédurale
     static Mesh* make_sphere(int rings, int sectors, float radius = 1.0f);
-    static Mesh* make_cylinder(int n, float radius = 0.5f, float height = 1.5f);
+    // with_caps=true : mesh visuel complet
+    // with_caps=false : flanc uniquement, pour le pass outline
+    static Mesh* make_cylinder(int n, float radius = 0.5f, float height = 1.5f, bool with_caps = true);
+    static Mesh* make_torus(int rings, int sectors, float R = 0.6f, float r = 0.25f);
 
     // Upload vers le GPU (à appeler après initglew)
     void upload();
