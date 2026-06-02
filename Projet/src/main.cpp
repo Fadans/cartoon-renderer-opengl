@@ -8,7 +8,6 @@
 #include "program.hh"
 #include "mesh.hh"
 #include "camera.hh"
-#include "texture.hh"
 
 #define CHECK()                                                             \
   do { GLenum e=glGetError();                                              \
@@ -16,19 +15,28 @@
   } while(0)
 
 // ─── état global ──────────────────────────────────────────────────────────
-program* prog_cel     = nullptr;
-program* prog_outline = nullptr;
+program* prog_cel  = nullptr;
+program* prog_post = nullptr;  // passe de contour post-process
 
-Mesh*    sphere            = nullptr;
-Mesh*    cylinder          = nullptr;  // visuel (avec caps)
-Mesh*    cylinder_outline  = nullptr;  // outline (flanc uniquement, sans caps)
-Mesh*    torus             = nullptr;
+Mesh*    sphere    = nullptr;
+Mesh*    cylinder  = nullptr;  // avec caps
+Mesh*    torus     = nullptr;
 
 Camera   cam;
 
-Texture* tex_sphere   = nullptr;  // checkerboard orange/blanc
-Texture* tex_cylinder = nullptr;  // checkerboard vert/blanc
-Texture* tex_torus    = nullptr;  // checkerboard bleu/blanc
+// ─── FBO (rendu hors-écran : scène + G-buffer normales/profondeur) ──────────
+GLuint g_fbo        = 0;
+GLuint g_tex_color  = 0;  // scène cel-shadée
+GLuint g_tex_normal = 0;  // normales espace caméra
+GLuint g_tex_depth  = 0;  // profondeur
+GLuint g_quad_vao   = 0;  // VAO vide pour le triangle plein écran
+int    g_win_w      = 1024;
+int    g_win_h      = 1024;
+
+// Couleurs unies par objet (textures retirées — on travaille en aplats)
+const float COL_SPHERE[3]   = { 0.85f, 0.40f, 0.13f };  // orange
+const float COL_CYLINDER[3] = { 0.27f, 0.55f, 0.30f };  // vert
+const float COL_TORUS[3]    = { 0.20f, 0.35f, 0.70f };  // bleu
 
 mygl::matrix4 g_projection;
 
@@ -43,11 +51,10 @@ float g_num_bands = 4.0f;  // toggle +/-
 GLint ul_model_cel;  // matrice model seule (espace monde pour éclairage)
 GLint ul_mv_cel, ul_proj_cel, ul_light, ul_lightcol, ul_eye;
 GLint ul_bands, ul_ambient, ul_spec_thr, ul_spec_str;
-GLint ul_rim_pow, ul_rim_thr, ul_rim_col;
-GLint ul_use_tex, ul_obj_color, ul_tex_diff;
+GLint ul_use_tex, ul_obj_color;
 
-// Uniforms outline
-GLint ul_mv_out, ul_proj_out, ul_width, ul_out_color;
+// Uniforms post-process (contour)
+GLint ul_post_texel, ul_post_color, ul_post_depth_thr, ul_post_normal_thr, ul_post_thickness;
 
 // ─── helper lire fichier ──────────────────────────────────────────────────
 static std::string read_file(const std::string& path) {
@@ -90,11 +97,11 @@ bool initshaders() {
     if (!prog_cel || !prog_cel->is_ready()) {
         std::cerr << "cel shader failed\n"; return false;
     }
-    prog_outline = program::make_program(
-        read_file("shaders/outline_vertex.glsl"),
-        read_file("shaders/outline_fragment.glsl"));
-    if (!prog_outline || !prog_outline->is_ready()) {
-        std::cerr << "outline shader failed\n"; return false;
+    prog_post = program::make_program(
+        read_file("shaders/post_vertex.glsl"),
+        read_file("shaders/post_fragment.glsl"));
+    if (!prog_post || !prog_post->is_ready()) {
+        std::cerr << "post shader failed\n"; return false;
     }
 
     prog_cel->use();
@@ -108,54 +115,64 @@ bool initshaders() {
     ul_ambient   = glGetUniformLocation(prog_cel->id(), "ambient");
     ul_spec_thr  = glGetUniformLocation(prog_cel->id(), "spec_threshold");
     ul_spec_str  = glGetUniformLocation(prog_cel->id(), "spec_strength");
-    ul_rim_pow   = glGetUniformLocation(prog_cel->id(), "rim_power");
-    ul_rim_thr   = glGetUniformLocation(prog_cel->id(), "rim_threshold");
-    ul_rim_col   = glGetUniformLocation(prog_cel->id(), "rim_color");
     ul_use_tex   = glGetUniformLocation(prog_cel->id(), "use_texture");
     ul_obj_color = glGetUniformLocation(prog_cel->id(), "object_color");
-    ul_tex_diff  = glGetUniformLocation(prog_cel->id(), "tex_diffuse");
 
-    ul_mv_out    = glGetUniformLocation(prog_outline->id(), "model_view");
-    ul_proj_out  = glGetUniformLocation(prog_outline->id(), "projection");
-    ul_width     = glGetUniformLocation(prog_outline->id(), "outline_width");
-    ul_out_color = glGetUniformLocation(prog_outline->id(), "outline_color");
+    // Post-process : lier les samplers aux unités de texture + récupérer les seuils
+    prog_post->use();
+    glUniform1i(glGetUniformLocation(prog_post->id(), "u_color"),  0);
+    glUniform1i(glGetUniformLocation(prog_post->id(), "u_normal"), 1);
+    glUniform1i(glGetUniformLocation(prog_post->id(), "u_depth"),  2);
+    ul_post_texel      = glGetUniformLocation(prog_post->id(), "u_texel");
+    ul_post_color      = glGetUniformLocation(prog_post->id(), "u_outline_color");
+    ul_post_depth_thr  = glGetUniformLocation(prog_post->id(), "u_depth_thr");
+    ul_post_normal_thr = glGetUniformLocation(prog_post->id(), "u_normal_thr");
+    ul_post_thickness  = glGetUniformLocation(prog_post->id(), "u_thickness");
 
     std::cout << "Shaders OK\n";
     return true;
 }
 
+// ─── FBO : (re)création des textures cibles à la taille de la fenêtre ────────
+void init_fbo(int w, int h) {
+    if (g_fbo == 0) glGenFramebuffers(1, &g_fbo);
+
+    auto mk_tex = [&](GLuint& t, GLint internal, GLenum format, GLenum type) {
+        if (t == 0) glGenTextures(1, &t);
+        glBindTexture(GL_TEXTURE_2D, t);
+        glTexImage2D(GL_TEXTURE_2D, 0, internal, w, h, 0, format, type, nullptr);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    };
+    mk_tex(g_tex_color,  GL_RGBA8,             GL_RGBA,            GL_UNSIGNED_BYTE);
+    mk_tex(g_tex_normal, GL_RGB16F,            GL_RGB,             GL_FLOAT);
+    mk_tex(g_tex_depth,  GL_DEPTH_COMPONENT24, GL_DEPTH_COMPONENT, GL_FLOAT);
+
+    glBindFramebuffer(GL_FRAMEBUFFER, g_fbo);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, g_tex_color,  0);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT1, GL_TEXTURE_2D, g_tex_normal, 0);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT,  GL_TEXTURE_2D, g_tex_depth,  0);
+
+    GLenum bufs[2] = { GL_COLOR_ATTACHMENT0, GL_COLOR_ATTACHMENT1 };
+    glDrawBuffers(2, bufs);
+
+    if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
+        std::cerr << "FBO incomplete\n";
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+}
+
 void initobjects() {
-    sphere           = Mesh::make_sphere(48, 64, 1.0f);
-    cylinder         = Mesh::make_cylinder(64, 0.5f, 1.5f, true);   // caps pour le rendu
-    cylinder_outline = Mesh::make_cylinder(64, 0.5f, 1.5f, false);  // pas de caps pour l'outline
-    torus            = Mesh::make_torus(48, 64, 0.65f, 0.28f);
+    sphere   = Mesh::make_sphere(48, 64, 1.0f);
+    cylinder = Mesh::make_cylinder(64, 0.5f, 1.5f, true);  // caps pour le rendu
+    torus    = Mesh::make_torus(48, 64, 0.65f, 0.28f);
     sphere->upload();
     cylinder->upload();
-    cylinder_outline->upload();
     torus->upload();
     std::cout << "Sphere: "   << sphere->vertex_count()   << " verts\n";
     std::cout << "Cylinder: " << cylinder->vertex_count() << " verts\n";
     std::cout << "Torus: "    << torus->vertex_count()    << " verts\n";
-}
-
-void inittextures() {
-    // Checkerboards procéduraux — aucun fichier TGA nécessaire
-    // Sphère : orange et crème
-    tex_sphere   = Texture::checkerboard(128, 8,
-                       230, 100,  30,   // orange
-                       240, 220, 180);  // crème
-    // Cylindre : vert sapin et vert clair
-    tex_cylinder = Texture::checkerboard(128, 8,
-                        30, 100,  50,   // vert foncé
-                       180, 230, 180);  // vert clair
-    // Tore : bleu nuit et bleu ciel
-    tex_torus    = Texture::checkerboard(128, 8,
-                        30,  60, 160,   // bleu nuit
-                       150, 190, 240);  // bleu ciel
-
-    // Lier le sampler tex_diffuse à l'unité 0
-    prog_cel->use();
-    glUniform1i(ul_tex_diff, 0);
 }
 
 void initPOV() {
@@ -180,17 +197,8 @@ static void draw_cel(Mesh* mesh, const mygl::matrix4& model) {
     mesh->draw();
 }
 
-static void draw_outline(Mesh* mesh, const mygl::matrix4& model) {
-    mygl::matrix4 mv = cam.get_view() * model;
-    glUniformMatrix4fv(ul_mv_out,   1, GL_FALSE, mv.data());
-    glUniformMatrix4fv(ul_proj_out, 1, GL_FALSE, g_projection.data());
-    mesh->draw();
-}
-
 // ─── boucle de rendu ──────────────────────────────────────────────────────
 void display() {
-    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT); CHECK();
-
     mygl::vec3 eye = cam.get_eye();
 
     // Matrices model avec rotation temporelle — vitesses différentes par objet
@@ -202,16 +210,11 @@ void display() {
                                  * mygl::matrix4::rotate_y(g_time * 0.5f)
                                  * mygl::matrix4::rotate_x(g_time * 0.3f);
 
-    // ── PASSE 1 : CONTOURS ────────────────────────────────────────────────
-    glCullFace(GL_FRONT);
-    prog_outline->use();
-    glUniform1f(ul_width,     0.04f);
-    glUniform3f(ul_out_color, 0.0f, 0.0f, 0.0f);
-    draw_outline(sphere,           model_sphere);
-    draw_outline(cylinder_outline, model_cylinder);  // flanc uniquement → plus d'ovale flottant
-    draw_outline(torus,            model_torus);
-
-    // ── PASSE 2 : CEL SHADING ─────────────────────────────────────────────
+    // ── PASSE 1 : SCÈNE CEL-SHADÉE → FBO (couleur + normales + profondeur) ──
+    glBindFramebuffer(GL_FRAMEBUFFER, g_fbo);
+    glViewport(0, 0, g_win_w, g_win_h);
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT); CHECK();
+    glEnable(GL_DEPTH_TEST);
     glCullFace(GL_BACK);
     prog_cel->use();
 
@@ -223,28 +226,47 @@ void display() {
     glUniform1f(ul_ambient,  0.15f);
     glUniform1f(ul_spec_thr, 0.55f);
     glUniform1f(ul_spec_str, 0.7f);
-    glUniform1f(ul_rim_pow,  4.0f);   // halo plus fin
-    glUniform1f(ul_rim_thr,  0.55f);  // seuil plus haut → bande plus étroite
-    glUniform3f(ul_rim_col,  0.7f, 0.85f, 1.0f);  // bleu pâle, moins agressif
 
-    // Sphère — texture checkerboard orange
-    glUniform1i(ul_use_tex, 1);
-    tex_sphere->bind(GL_TEXTURE0);
+    // Aplats : aucune texture, couleur unie par objet
+    glUniform1i(ul_use_tex, 0);
+
+    glUniform4f(ul_obj_color, COL_SPHERE[0], COL_SPHERE[1], COL_SPHERE[2], 1.0f);
     draw_cel(sphere, model_sphere);
 
-    // Cylindre — texture checkerboard vert
-    tex_cylinder->bind(GL_TEXTURE0);
+    glUniform4f(ul_obj_color, COL_CYLINDER[0], COL_CYLINDER[1], COL_CYLINDER[2], 1.0f);
     draw_cel(cylinder, model_cylinder);
 
-    // Tore — texture checkerboard bleu
-    tex_torus->bind(GL_TEXTURE0);
+    glUniform4f(ul_obj_color, COL_TORUS[0], COL_TORUS[1], COL_TORUS[2], 1.0f);
     draw_cel(torus, model_torus);
+
+    // ── PASSE 2 : CONTOUR POST-PROCESS → ÉCRAN ─────────────────────────────
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    glViewport(0, 0, g_win_w, g_win_h);
+    glDisable(GL_DEPTH_TEST);
+    prog_post->use();
+
+    glActiveTexture(GL_TEXTURE0); glBindTexture(GL_TEXTURE_2D, g_tex_color);
+    glActiveTexture(GL_TEXTURE1); glBindTexture(GL_TEXTURE_2D, g_tex_normal);
+    glActiveTexture(GL_TEXTURE2); glBindTexture(GL_TEXTURE_2D, g_tex_depth);
+
+    glUniform2f(ul_post_texel, 1.0f / g_win_w, 1.0f / g_win_h);
+    glUniform3f(ul_post_color, 0.0f, 0.0f, 0.0f);
+    glUniform1f(ul_post_depth_thr,  0.30f);  // silhouettes (à monter si bruit, baisser si trous)
+    glUniform1f(ul_post_normal_thr, 0.40f);  // plis internes (jonction cap/flanc)
+    glUniform1f(ul_post_thickness,  5.0f);   // épaisseur du trait en pixels
+
+    glBindVertexArray(g_quad_vao);
+    glDrawArrays(GL_TRIANGLES, 0, 3);
+    glBindVertexArray(0);
 
     glutSwapBuffers();
 }
 
 void reshape(int w, int h) {
+    g_win_w = w;
+    g_win_h = h;
     glViewport(0, 0, w, h); CHECK();
+    init_fbo(w, h);          // recréer les cibles à la nouvelle taille
 }
 
 // ─── clavier ──────────────────────────────────────────────────────────────
@@ -275,8 +297,10 @@ int main(int argc, char* argv[]) {
     initGL();
     if (!initshaders())        return 1;
     initobjects();
-    inittextures();
     initPOV();
+
+    glGenVertexArrays(1, &g_quad_vao);  // VAO vide pour le triangle plein écran
+    init_fbo(g_win_w, g_win_h);
 
     glutDisplayFunc(display);
     glutReshapeFunc(reshape);
@@ -284,6 +308,6 @@ int main(int argc, char* argv[]) {
     glutSpecialFunc([](int k, int, int){ cam.on_special(k); });
     glutTimerFunc(16, timer, 0);
 
-    std::cout << "WASD/fleches=orbite  Q/E=zoom  +/-=bandes  ESPACE=pause  ESC=quitter\n";
+    std::cout << "WASD/fleches=orbite  Q/E=zoom  IJKL=pan  +/-=bandes  ESPACE=pause  ESC=quitter\n";
     glutMainLoop();
 }

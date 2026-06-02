@@ -79,14 +79,6 @@ Mesh* Mesh::make_sphere(int rings, int sectors, float radius) {
 // ─── cylindre avec caps ───────────────────────────────────────────────────
 Mesh* Mesh::make_cylinder(int n, float radius, float height, bool with_caps) {
     Mesh* m = new Mesh();
-    // Normales moyennées flanc+cap pour le mesh outline (with_caps=false) :
-    // pousse les arêtes en diagonale → l'outline descend sous la cap et crée
-    // un anneau noir visible tout autour de l'arête du disque.
-    const float inv_sq2 = 1.0f / std::sqrt(2.0f);
-    const float nr  = with_caps ? 1.0f : inv_sq2;  // composante radiale
-    const float nyt = with_caps ? 0.0f :  inv_sq2; // ny arête haute
-    const float nyb = with_caps ? 0.0f : -inv_sq2; // ny arête basse
-
     for (int i = 0; i < n; i++) {
         float t0=2*PI*i/n, t1=2*PI*(i+1)/n;
         float x0=radius*std::cos(t0), z0=radius*std::sin(t0);
@@ -94,13 +86,13 @@ Mesh* Mesh::make_cylinder(int n, float radius, float height, bool with_caps) {
         float u0=(float)i/n, u1=(float)(i+1)/n;
 
         // Flanc — Triangle 1 : A, D, C
-        push3(m->positions,x0,-height/2,z0); push3(m->normals,x0/radius*nr,nyb,z0/radius*nr); push2(m->uvs,u0,0);
-        push3(m->positions,x0, height/2,z0); push3(m->normals,x0/radius*nr,nyt,z0/radius*nr); push2(m->uvs,u0,1);
-        push3(m->positions,x1, height/2,z1); push3(m->normals,x1/radius*nr,nyt,z1/radius*nr); push2(m->uvs,u1,1);
+        push3(m->positions,x0,-height/2,z0); push3(m->normals,x0/radius,0,z0/radius); push2(m->uvs,u0,0);
+        push3(m->positions,x0, height/2,z0); push3(m->normals,x0/radius,0,z0/radius); push2(m->uvs,u0,1);
+        push3(m->positions,x1, height/2,z1); push3(m->normals,x1/radius,0,z1/radius); push2(m->uvs,u1,1);
         // Flanc — Triangle 2 : A, C, B
-        push3(m->positions,x0,-height/2,z0); push3(m->normals,x0/radius*nr,nyb,z0/radius*nr); push2(m->uvs,u0,0);
-        push3(m->positions,x1, height/2,z1); push3(m->normals,x1/radius*nr,nyt,z1/radius*nr); push2(m->uvs,u1,1);
-        push3(m->positions,x1,-height/2,z1); push3(m->normals,x1/radius*nr,nyb,z1/radius*nr); push2(m->uvs,u1,0);
+        push3(m->positions,x0,-height/2,z0); push3(m->normals,x0/radius,0,z0/radius); push2(m->uvs,u0,0);
+        push3(m->positions,x1, height/2,z1); push3(m->normals,x1/radius,0,z1/radius); push2(m->uvs,u1,1);
+        push3(m->positions,x1,-height/2,z1); push3(m->normals,x1/radius,0,z1/radius); push2(m->uvs,u1,0);
 
         if (with_caps) {
             float cu0=0.5f+0.5f*std::cos(t0), cv0=0.5f+0.5f*std::sin(t0);
