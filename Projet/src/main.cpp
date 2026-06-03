@@ -51,15 +51,17 @@ bool  g_animating = true;
 
 // Paramètre cartoon interactif
 float g_num_bands = 4.0f;  // toggle +/-
+bool  g_hatch     = true;  // hachures de croquis (toggle 'h')
 
 // Uniforms cel
 GLint ul_model_cel;  // matrice model seule (espace monde pour éclairage)
 GLint ul_mv_cel, ul_proj_cel, ul_light, ul_lightcol, ul_eye;
 GLint ul_bands, ul_ambient, ul_spec_thr, ul_spec_str;
-GLint ul_use_tex, ul_obj_color;
+GLint ul_use_tex, ul_obj_color, ul_use_hatch;
 
 // Uniforms post-process (contour + fond)
 GLint ul_post_texel, ul_post_color, ul_post_depth_thr, ul_post_normal_thr, ul_post_thickness;
+GLint ul_post_color_far, ul_post_thickness_far, ul_post_dist_near, ul_post_dist_far;
 GLint ul_post_bg_top, ul_post_bg_bottom;
 
 // Uniforms ombre projetée
@@ -132,6 +134,7 @@ bool initshaders() {
     ul_spec_str  = glGetUniformLocation(prog_cel->id(), "spec_strength");
     ul_use_tex   = glGetUniformLocation(prog_cel->id(), "use_texture");
     ul_obj_color = glGetUniformLocation(prog_cel->id(), "object_color");
+    ul_use_hatch = glGetUniformLocation(prog_cel->id(), "use_hatch");
 
     // Post-process : lier les samplers aux unités de texture + récupérer les seuils
     prog_post->use();
@@ -143,6 +146,10 @@ bool initshaders() {
     ul_post_depth_thr  = glGetUniformLocation(prog_post->id(), "u_depth_thr");
     ul_post_normal_thr = glGetUniformLocation(prog_post->id(), "u_normal_thr");
     ul_post_thickness  = glGetUniformLocation(prog_post->id(), "u_thickness");
+    ul_post_color_far     = glGetUniformLocation(prog_post->id(), "u_outline_color_far");
+    ul_post_thickness_far = glGetUniformLocation(prog_post->id(), "u_thickness_far");
+    ul_post_dist_near     = glGetUniformLocation(prog_post->id(), "u_dist_near");
+    ul_post_dist_far      = glGetUniformLocation(prog_post->id(), "u_dist_far");
     ul_post_bg_top     = glGetUniformLocation(prog_post->id(), "u_bg_top");
     ul_post_bg_bottom  = glGetUniformLocation(prog_post->id(), "u_bg_bottom");
 
@@ -262,6 +269,7 @@ void display() {
 
     // Aplats : aucune texture, couleur unie par objet
     glUniform1i(ul_use_tex, 0);
+    glUniform1i(ul_use_hatch, g_hatch ? 1 : 0);
 
     // Sol (cel-shadé)
     glUniform4f(ul_obj_color, COL_GROUND[0], COL_GROUND[1], COL_GROUND[2], 1.0f);
@@ -312,7 +320,12 @@ void display() {
     glUniform3f(ul_post_color, 0.0f, 0.0f, 0.0f);
     glUniform1f(ul_post_depth_thr,  0.30f);  // silhouettes (à monter si bruit, baisser si trous)
     glUniform1f(ul_post_normal_thr, 0.40f);  // plis internes (jonction cap/flanc)
-    glUniform1f(ul_post_thickness,  5.0f);   // épaisseur du trait en pixels
+    glUniform1f(ul_post_thickness,  5.0f);   // épaisseur du trait au premier plan (px)
+    // Contour variable par profondeur : loin = plus fin + estompé vers le fond
+    glUniform1f(ul_post_thickness_far, 0.35f);             // loin → 35% de l'épaisseur
+    glUniform1f(ul_post_dist_near,     3.0f);              // distance « premier plan »
+    glUniform1f(ul_post_dist_far,      12.0f);             // distance « arrière-plan »
+    glUniform3f(ul_post_color_far, 0.22f, 0.28f, 0.40f);   // trait lointain bleu-gris estompé
     glUniform3f(ul_post_bg_top,    0.52f, 0.70f, 0.92f);  // bleu ciel cartoon
     glUniform3f(ul_post_bg_bottom, 0.93f, 0.91f, 0.82f);  // crème pâle (bas)
 
@@ -342,10 +355,15 @@ void keyboard(unsigned char k, int, int) {
             g_num_bands = std::max(g_num_bands - 1.0f, 1.0f);
             std::cout << "num_bands = " << g_num_bands << "\n";
             glutPostRedisplay(); break;
-        // Pause animation
-        case ' ':
+        // Pause animation (Espace est désormais « monter » pour la caméra)
+        case 'p': case 'P':
             g_animating = !g_animating;
             std::cout << (g_animating ? "Animation ON\n" : "Animation OFF\n"); break;
+        // Toggle hachures de croquis
+        case 'h': case 'H':
+            g_hatch = !g_hatch;
+            std::cout << (g_hatch ? "Hachures ON\n" : "Hachures OFF\n");
+            glutPostRedisplay(); break;
         default:
             cam.on_key(k);
     }
@@ -369,6 +387,6 @@ int main(int argc, char* argv[]) {
     glutSpecialFunc([](int k, int, int){ cam.on_special(k); });
     glutTimerFunc(16, timer, 0);
 
-    std::cout << "WASD/fleches=orbite  Q/E=zoom  IJKL=pan  +/-=bandes  ESPACE=pause  ESC=quitter\n";
+    std::cout << "Fleches=orbite  A/E=zoom  ZQSD=deplacer  ESPACE/C=monter-descendre  +/-=bandes  H=hachures  P=pause  ESC=quitter\n";
     glutMainLoop();
 }

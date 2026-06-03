@@ -18,7 +18,10 @@ public:
     // Déplace la cible dans le plan écran (dx = droite, dy = haut)
     void pan(float dx, float dy);
 
+    // Déplacement horizontal au sol (strafe = droite, forward = avant projeté en XZ)
+    void move(float strafe, float forward);
+
     // Callbacks GLUT
-    void on_key    (unsigned char key);  // WASD + Q/E + IJKL
-    void on_special(int key);            // flèches
+    void on_key    (unsigned char key);  // ZQSD déplacer · A/E zoom · Espace/C vertical
+    void on_special(int key);            // flèches = orbite
 };

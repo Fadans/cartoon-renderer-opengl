@@ -23,6 +23,17 @@ void Camera::pan(float dx, float dy) {
     glutPostRedisplay();
 }
 
+void Camera::move(float strafe, float forward) {
+    mygl::vec3 e   = get_eye();
+    mygl::vec3 fwd = center - e;
+    fwd.y = 0.0f;                                         // avant projeté au sol (XZ)
+    fwd = fwd.normalize();
+    mygl::vec3 right = fwd.cross({0, 1, 0}).normalize();  // droite au sol
+    center.x += (right.x * strafe + fwd.x * forward) * pan_speed;
+    center.z += (right.z * strafe + fwd.z * forward) * pan_speed;
+    glutPostRedisplay();
+}
+
 mygl::matrix4 Camera::get_view() const {
     mygl::vec3 e = get_eye();
     return mygl::lookat(e.x, e.y, e.z,
@@ -32,17 +43,17 @@ mygl::matrix4 Camera::get_view() const {
 
 void Camera::on_key(unsigned char key) {
     switch (key) {
-        case 'a': case 'A': angle_h -= speed; break;
-        case 'd': case 'D': angle_h += speed; break;
-        case 'w': case 'W': angle_v = std::min(angle_v + speed,  1.5f); break;
-        case 's': case 'S': angle_v = std::max(angle_v - speed, -1.5f); break;
-        case 'q': case 'Q': distance = std::max(distance - 0.2f, 1.0f); break;
+        // Zoom : A rapproche, E éloigne
+        case 'a': case 'A': distance = std::max(distance - 0.2f, 1.0f); break;
         case 'e': case 'E': distance += 0.2f; break;
-        // Pan (déplacement de la cible dans le plan écran)
-        case 'j': case 'J': pan(-1.0f,  0.0f); break;  // gauche
-        case 'l': case 'L': pan( 1.0f,  0.0f); break;  // droite
-        case 'i': case 'I': pan( 0.0f,  1.0f); break;  // haut
-        case 'k': case 'K': pan( 0.0f, -1.0f); break;  // bas
+        // Déplacement horizontal au sol — ZQSD (AZERTY)
+        case 'z': case 'Z': move( 0.0f,  1.0f); break;  // avancer
+        case 's': case 'S': move( 0.0f, -1.0f); break;  // reculer
+        case 'q': case 'Q': move(-1.0f,  0.0f); break;  // gauche
+        case 'd': case 'D': move( 1.0f,  0.0f); break;  // droite
+        // Vertical — Espace monte, C descend (Shift seul non capté par GLUT)
+        case ' ':           center.y += pan_speed; break;
+        case 'c': case 'C': center.y -= pan_speed; break;
         case 27:            std::exit(0); // ESC
     }
     glutPostRedisplay();
