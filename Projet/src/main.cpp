@@ -15,12 +15,14 @@
   } while(0)
 
 // ─── état global ──────────────────────────────────────────────────────────
-program* prog_cel  = nullptr;
-program* prog_post = nullptr;  // passe de contour post-process
+program* prog_cel    = nullptr;
+program* prog_post   = nullptr;  // passe de contour post-process
+program* prog_shadow = nullptr;  // ombre projetée planaire
 
 Mesh*    sphere    = nullptr;
 Mesh*    cylinder  = nullptr;  // avec caps
 Mesh*    torus     = nullptr;
+Mesh*    ground    = nullptr;  // sol
 
 Camera   cam;
 
@@ -37,6 +39,9 @@ int    g_win_h      = 1024;
 const float COL_SPHERE[3]   = { 0.85f, 0.40f, 0.13f };  // orange
 const float COL_CYLINDER[3] = { 0.27f, 0.55f, 0.30f };  // vert
 const float COL_TORUS[3]    = { 0.20f, 0.35f, 0.70f };  // bleu
+const float COL_GROUND[3]   = { 0.72f, 0.74f, 0.66f };  // sol beige-vert
+
+const float GROUND_Y = -1.3f;   // hauteur du sol (plan de l'ombre)
 
 mygl::matrix4 g_projection;
 
@@ -53,8 +58,12 @@ GLint ul_mv_cel, ul_proj_cel, ul_light, ul_lightcol, ul_eye;
 GLint ul_bands, ul_ambient, ul_spec_thr, ul_spec_str;
 GLint ul_use_tex, ul_obj_color;
 
-// Uniforms post-process (contour)
+// Uniforms post-process (contour + fond)
 GLint ul_post_texel, ul_post_color, ul_post_depth_thr, ul_post_normal_thr, ul_post_thickness;
+GLint ul_post_bg_top, ul_post_bg_bottom;
+
+// Uniforms ombre projetée
+GLint ul_shadow_mvp, ul_shadow_color, ul_shadow_gnormal;
 
 // ─── helper lire fichier ──────────────────────────────────────────────────
 static std::string read_file(const std::string& path) {
@@ -103,12 +112,18 @@ bool initshaders() {
     if (!prog_post || !prog_post->is_ready()) {
         std::cerr << "post shader failed\n"; return false;
     }
+    prog_shadow = program::make_program(
+        read_file("shaders/shadow_vertex.glsl"),
+        read_file("shaders/shadow_fragment.glsl"));
+    if (!prog_shadow || !prog_shadow->is_ready()) {
+        std::cerr << "shadow shader failed\n"; return false;
+    }
 
     prog_cel->use();
     ul_model_cel = glGetUniformLocation(prog_cel->id(), "model");
     ul_mv_cel    = glGetUniformLocation(prog_cel->id(), "model_view");
     ul_proj_cel  = glGetUniformLocation(prog_cel->id(), "projection");
-    ul_light     = glGetUniformLocation(prog_cel->id(), "light_position");
+    ul_light     = glGetUniformLocation(prog_cel->id(), "light_dir");
     ul_lightcol  = glGetUniformLocation(prog_cel->id(), "light_color");
     ul_eye       = glGetUniformLocation(prog_cel->id(), "eye_position");
     ul_bands     = glGetUniformLocation(prog_cel->id(), "num_bands");
@@ -128,6 +143,13 @@ bool initshaders() {
     ul_post_depth_thr  = glGetUniformLocation(prog_post->id(), "u_depth_thr");
     ul_post_normal_thr = glGetUniformLocation(prog_post->id(), "u_normal_thr");
     ul_post_thickness  = glGetUniformLocation(prog_post->id(), "u_thickness");
+    ul_post_bg_top     = glGetUniformLocation(prog_post->id(), "u_bg_top");
+    ul_post_bg_bottom  = glGetUniformLocation(prog_post->id(), "u_bg_bottom");
+
+    prog_shadow->use();
+    ul_shadow_mvp     = glGetUniformLocation(prog_shadow->id(), "mvp");
+    ul_shadow_color   = glGetUniformLocation(prog_shadow->id(), "shadow_color");
+    ul_shadow_gnormal = glGetUniformLocation(prog_shadow->id(), "ground_view_normal");
 
     std::cout << "Shaders OK\n";
     return true;
@@ -167,9 +189,11 @@ void initobjects() {
     sphere   = Mesh::make_sphere(48, 64, 1.0f);
     cylinder = Mesh::make_cylinder(64, 0.5f, 1.5f, true);  // caps pour le rendu
     torus    = Mesh::make_torus(48, 64, 0.65f, 0.28f);
+    ground   = Mesh::make_plane(12.0f, GROUND_Y);          // grand sol (ombres restent dessus)
     sphere->upload();
     cylinder->upload();
     torus->upload();
+    ground->upload();
     std::cout << "Sphere: "   << sphere->vertex_count()   << " verts\n";
     std::cout << "Cylinder: " << cylinder->vertex_count() << " verts\n";
     std::cout << "Torus: "    << torus->vertex_count()    << " verts\n";
@@ -197,6 +221,12 @@ static void draw_cel(Mesh* mesh, const mygl::matrix4& model) {
     mesh->draw();
 }
 
+// Dessine l'ombre aplatie d'un mesh (mvp = projection·view·shadow·model)
+static void draw_shadow(Mesh* mesh, const mygl::matrix4& mvp) {
+    glUniformMatrix4fv(ul_shadow_mvp, 1, GL_FALSE, mvp.data());
+    mesh->draw();
+}
+
 // ─── boucle de rendu ──────────────────────────────────────────────────────
 void display() {
     mygl::vec3 eye = cam.get_eye();
@@ -218,7 +248,10 @@ void display() {
     glCullFace(GL_BACK);
     prog_cel->use();
 
-    glUniform3f(ul_light,    2.0f, 4.0f, 3.0f);  // lumière monde fixe
+    // Lumière directionnelle fixe (soleil) : direction VERS la lumière.
+    // Directionnel → dot(n,l) uniforme sur les faces plates (sol, capuchons).
+    mygl::vec3 light = mygl::vec3(0.4f, 0.85f, 0.5f).normalize();
+    glUniform3f(ul_light,    light.x, light.y, light.z);
     glUniform3f(ul_lightcol, 1.0f, 1.0f, 1.0f);
     glUniform3f(ul_eye,      eye.x, eye.y, eye.z);
 
@@ -230,6 +263,32 @@ void display() {
     // Aplats : aucune texture, couleur unie par objet
     glUniform1i(ul_use_tex, 0);
 
+    // Sol (cel-shadé)
+    glUniform4f(ul_obj_color, COL_GROUND[0], COL_GROUND[1], COL_GROUND[2], 1.0f);
+    draw_cel(ground, mygl::matrix4::identity());
+
+    // ── Ombres projetées (entre le sol et les objets) ──────────────────────
+    // Matrice d'ombre : aplatit sur le plan du sol y = GROUND_Y depuis la lampe.
+    // Polygon offset : tire l'ombre vers la caméra pour qu'elle gagne le z-test
+    // contre le sol coplanaire (sinon z-fighting).
+    mygl::matrix4 view      = cam.get_view();
+    // Ombre directionnelle (lw=0) : projection parallèle suivant la direction lumière
+    mygl::matrix4 shadowMat = mygl::matrix4::shadow(0, 1, 0, -GROUND_Y, light, 0.0f);
+    mygl::matrix4 vp        = g_projection * view;
+    const GLfloat* vd = view.data();  // colonne 1 du 3×3 = normale +Y en espace caméra
+
+    prog_shadow->use();
+    glUniform3f(ul_shadow_color,   0.22f, 0.24f, 0.28f);
+    glUniform3f(ul_shadow_gnormal, vd[4], vd[5], vd[6]);
+    glEnable(GL_POLYGON_OFFSET_FILL);
+    glPolygonOffset(-1.0f, -1.0f);
+    draw_shadow(sphere,   vp * shadowMat * model_sphere);
+    draw_shadow(cylinder, vp * shadowMat * model_cylinder);
+    draw_shadow(torus,    vp * shadowMat * model_torus);
+    glDisable(GL_POLYGON_OFFSET_FILL);
+
+    // ── Objets (cel-shadés) ────────────────────────────────────────────────
+    prog_cel->use();  // uniforms cel (lumière, bandes…) toujours en place
     glUniform4f(ul_obj_color, COL_SPHERE[0], COL_SPHERE[1], COL_SPHERE[2], 1.0f);
     draw_cel(sphere, model_sphere);
 
@@ -254,6 +313,8 @@ void display() {
     glUniform1f(ul_post_depth_thr,  0.30f);  // silhouettes (à monter si bruit, baisser si trous)
     glUniform1f(ul_post_normal_thr, 0.40f);  // plis internes (jonction cap/flanc)
     glUniform1f(ul_post_thickness,  5.0f);   // épaisseur du trait en pixels
+    glUniform3f(ul_post_bg_top,    0.52f, 0.70f, 0.92f);  // bleu ciel cartoon
+    glUniform3f(ul_post_bg_bottom, 0.93f, 0.91f, 0.82f);  // crème pâle (bas)
 
     glBindVertexArray(g_quad_vao);
     glDrawArrays(GL_TRIANGLES, 0, 3);

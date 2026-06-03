@@ -157,6 +157,20 @@ Mesh* Mesh::make_torus(int rings, int sectors, float R, float r) {
     return m;
 }
 
+// ─── sol (quad horizontal) ──────────────────────────────────────────────────
+Mesh* Mesh::make_plane(float half, float y) {
+    Mesh* m = new Mesh();
+    // 2 triangles, normale +Y, CCW vu de dessus
+    auto v = [&](float x, float z, float u, float w) {
+        push3(m->positions, x, y, z);
+        push3(m->normals,   0, 1, 0);
+        push2(m->uvs, u, w);
+    };
+    v(-half,-half,0,0); v(-half, half,0,1); v( half, half,1,1);
+    v(-half,-half,0,0); v( half, half,1,1); v( half,-half,1,0);
+    return m;
+}
+
 // ─── upload GPU ───────────────────────────────────────────────────────────
 // Utilise les locations fixes (layout qualifiers dans les shaders)
 void Mesh::upload() {

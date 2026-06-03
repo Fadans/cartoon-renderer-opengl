@@ -17,6 +17,8 @@ public:
     // with_caps=false : flanc uniquement, pour le pass outline
     static Mesh* make_cylinder(int n, float radius = 0.5f, float height = 1.5f, bool with_caps = true);
     static Mesh* make_torus(int rings, int sectors, float R = 0.6f, float r = 0.25f);
+    // Quad horizontal (normale +Y) centré en (0,y,0), demi-côté `half`
+    static Mesh* make_plane(float half, float y = 0.0f);
 
     // Upload vers le GPU (à appeler après initglew)
     void upload();

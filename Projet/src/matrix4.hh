@@ -30,6 +30,12 @@ public:
     static matrix4 rotate_z(GLfloat angle);
     static matrix4 scale(GLfloat sx, GLfloat sy, GLfloat sz);
 
+    // Matrice d'ombre projetée planaire : aplatit la géométrie sur le plan
+    // (a,b,c,d). `light` = position (lw=1) ou direction vers la lumière (lw=0,
+    // soleil directionnel → projection parallèle).
+    static matrix4 shadow(GLfloat a, GLfloat b, GLfloat c, GLfloat d,
+                          const vec3& light, GLfloat lw = 1.0f);
+
     friend std::ostream& operator<<(std::ostream& out, const matrix4& m);
 };
 

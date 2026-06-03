@@ -1,7 +1,7 @@
 #version 450
 
 uniform sampler2D tex_diffuse;
-uniform vec3  light_position;
+uniform vec3  light_dir;       // direction VERS la lumière (soleil directionnel)
 uniform vec3  light_color;
 uniform vec3  eye_position;
 
@@ -22,8 +22,8 @@ in vec2 frag_uv;
 
 void main() {
     vec3 n = normalize(frag_normal);
-    vec3 l = normalize(light_position - frag_pos);
-    vec3 v = normalize(eye_position   - frag_pos);
+    vec3 l = normalize(light_dir);                 // directionnel : constant partout
+    vec3 v = normalize(eye_position - frag_pos);
     vec3 r = reflect(-l, n);
 
     // ── Cel diffus : discrétisation en paliers ──────────────────────────

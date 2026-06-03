@@ -21,6 +21,8 @@ uniform vec3  u_outline_color;  // couleur du trait (noir)
 uniform float u_depth_thr;      // seuil profondeur (silhouettes)
 uniform float u_normal_thr;     // seuil normale (plis internes)
 uniform float u_thickness;      // épaisseur du trait (en pixels) : écarte les voisins
+uniform vec3  u_bg_top;         // couleur fond (haut)
+uniform vec3  u_bg_bottom;      // couleur fond (bas)
 
 // near/far du frustum (main.cpp : frustum(..., 1.0, 100.0))
 const float NEAR = 1.0;
@@ -39,18 +41,27 @@ vec3 read_normal(vec2 uv) { return texture(u_normal, uv).xyz * 2.0 - 1.0; }
 float read_depth(vec2 uv) { return linearize(texture(u_depth, uv).r); }
 
 void main() {
-    vec3 base = texture(u_color, frag_uv).rgb;
+    // Fond stylisé : sur les pixels d'arrière-plan (depth = far, jamais écrits
+    // par la géométrie → depth brut ≈ 1.0) on remplace la couleur par un
+    // gradient vertical. Le contour reste tracé aux silhouettes (cf. plus bas).
+    float raw_depth = texture(u_depth, frag_uv).r;
+    bool  is_bg     = raw_depth >= 0.9999;
+    vec3  gradient  = mix(u_bg_bottom, u_bg_top, frag_uv.y);
+    vec3  base      = is_bg ? gradient : texture(u_color, frag_uv).rgb;
 
     // Écart d'échantillonnage = épaisseur du trait (en pixels)
     vec2 dx = vec2(u_texel.x * u_thickness, 0.0);
     vec2 dy = vec2(0.0, u_texel.y * u_thickness);
 
-    // ── Bords par la profondeur (4 voisins) ────────────────────────────────
+    // ── Bords par la profondeur (dérivée SECONDE = Laplacien) ──────────────
+    // On compare la profondeur à l'interpolation linéaire de ses voisins.
+    // Un plan, même vu à angle rasant, a une profondeur linéaire → ce terme ≈ 0
+    // (pas de faux contour sur le sol qui s'éloigne). Une vraie silhouette est
+    // une discontinuité → terme grand → contour tracé.
     float dc = read_depth(frag_uv);
-    float depth_edge = abs(dc - read_depth(frag_uv + dx))
-                     + abs(dc - read_depth(frag_uv - dx))
-                     + abs(dc - read_depth(frag_uv + dy))
-                     + abs(dc - read_depth(frag_uv - dy));
+    float dl = read_depth(frag_uv - dx), dr = read_depth(frag_uv + dx);
+    float dd = read_depth(frag_uv - dy), du = read_depth(frag_uv + dy);
+    float depth_edge = abs(dl + dr - 2.0 * dc) + abs(du + dd - 2.0 * dc);
 
     // ── Bords par la normale (4 voisins) ───────────────────────────────────
     vec3 nc = read_normal(frag_uv);

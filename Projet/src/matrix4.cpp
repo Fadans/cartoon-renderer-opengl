@@ -67,6 +67,22 @@ matrix4 matrix4::scale(GLfloat sx, GLfloat sy, GLfloat sz) {
     return r;
 }
 
+// ─── ombre projetée planaire ────────────────────────────────────────────────
+// Projette tout point sur le plan (a,b,c,d) en suivant la droite lumière→point.
+// Lumière ponctuelle l=(lx,ly,lz,1). dot = a·lx + b·ly + c·lz + d.
+// Forme matricielle classique : M = dot·I − l·planeᵀ (en homogène).
+matrix4 matrix4::shadow(GLfloat a, GLfloat b, GLfloat c, GLfloat d,
+                        const vec3& light, GLfloat lw) {
+    GLfloat lx=light.x, ly=light.y, lz=light.z;
+    GLfloat dot = a*lx + b*ly + c*lz + d*lw;
+    matrix4 r;  // colonne-major : m[col*4 + row]
+    r.m[0]=dot - lx*a;  r.m[4]=-lx*b;       r.m[8] =-lx*c;       r.m[12]=-lx*d;
+    r.m[1]=-ly*a;       r.m[5]=dot - ly*b;  r.m[9] =-ly*c;       r.m[13]=-ly*d;
+    r.m[2]=-lz*a;       r.m[6]=-lz*b;       r.m[10]=dot - lz*c;  r.m[14]=-lz*d;
+    r.m[3]=-lw*a;       r.m[7]=-lw*b;       r.m[11]=-lw*c;       r.m[15]=dot - lw*d;
+    return r;
+}
+
 // ─── lookat ───────────────────────────────────────────────────────────────
 matrix4 lookat(GLfloat eX,GLfloat eY,GLfloat eZ,
                GLfloat cX,GLfloat cY,GLfloat cZ,
