@@ -218,6 +218,82 @@ Mesh* Mesh::make_cone(int n, float radius, float height) {
     return m;
 }
 
+// ─── rocher facetté (sphère déformée par bruit, normales plates) ─────────────
+// Bruit lisse déterministe (lumps basse fréquence) à partir d'une direction.
+// Déterministe sur la DIRECTION → les sommets dupliqués entre triangles reçoivent
+// le même déplacement (pas de fissure dans le maillage).
+static float rock_noise(float x, float y, float z, float seed) {
+    float n = std::sin(x*2.7f + seed*1.3f)
+            + std::sin(y*3.1f + seed*2.1f)
+            + std::sin(z*2.3f + seed*0.7f)
+            + std::sin((x+y)*1.9f + seed*0.5f)
+            + std::sin((y+z)*2.5f + seed*1.7f);
+    return n * 0.2f;   // ≈ [-1,1]
+}
+
+Mesh* Mesh::make_rock(int rings, int sectors, float radius, float jitter, float seed) {
+    Mesh* m = new Mesh();
+    auto dir = [](float phi, float th) -> std::array<float,3> {
+        return { std::sin(phi)*std::cos(th), std::cos(phi), std::sin(phi)*std::sin(th) };
+    };
+    auto disp = [&](std::array<float,3> u) -> std::array<float,3> {
+        float d = radius * (1.0f + jitter * rock_noise(u[0],u[1],u[2], seed));
+        return { u[0]*d, u[1]*d, u[2]*d };
+    };
+    // Triangle à normale PLATE (calculée depuis les 3 sommets déformés → facettes)
+    auto tri = [&](std::array<float,3> a, std::array<float,3> b, std::array<float,3> c) {
+        float ux=b[0]-a[0], uy=b[1]-a[1], uz=b[2]-a[2];
+        float vx=c[0]-a[0], vy=c[1]-a[1], vz=c[2]-a[2];
+        float nx=uy*vz-uz*vy, ny=uz*vx-ux*vz, nz=ux*vy-uy*vx;
+        float l=std::sqrt(nx*nx+ny*ny+nz*nz); if (l>1e-6f){ nx/=l; ny/=l; nz/=l; }
+        auto P=[&](std::array<float,3> p){
+            push3(m->positions,p[0],p[1],p[2]); push3(m->normals,nx,ny,nz); push2(m->uvs,0,0);
+        };
+        P(a); P(b); P(c);
+    };
+    for (int r = 0; r < rings; r++) {
+        float phi0=PI*r/rings, phi1=PI*(r+1)/rings;
+        for (int s = 0; s < sectors; s++) {
+            float th0=2*PI*s/sectors, th1=2*PI*(s+1)/sectors;
+            auto A=disp(dir(phi0,th0)), B=disp(dir(phi1,th0));
+            auto C=disp(dir(phi1,th1)), D=disp(dir(phi0,th1));
+            tri(A,D,C); tri(A,C,B);   // même winding CCW que make_sphere
+        }
+    }
+    return m;
+}
+
+// ─── mesa / falaise (prisme érodé, sommet plat) ──────────────────────────────
+Mesh* Mesh::make_mesa(int sides, float radius, float height, float jitter, float seed) {
+    Mesh* m = new Mesh();
+    float hy = height / 2.0f;
+    // rayon par colonne : modulé par 2 sinus → silhouette érodée, irrégulière
+    auto rad = [&](int i) {
+        float a = 2.0f*PI*i/sides;
+        return radius * (1.0f + jitter*0.5f*(std::sin(a*2.0f + seed) + std::sin(a*3.0f + seed*1.7f)));
+    };
+    auto tri = [&](float ax,float ay,float az, float bx,float by,float bz, float cx,float cy,float cz) {
+        float ux=bx-ax,uy=by-ay,uz=bz-az, vx=cx-ax,vy=cy-ay,vz=cz-az;
+        float nx=uy*vz-uz*vy, ny=uz*vx-ux*vz, nz=ux*vy-uy*vx;
+        float l=std::sqrt(nx*nx+ny*ny+nz*nz); if (l>1e-6f){ nx/=l; ny/=l; nz/=l; }
+        push3(m->positions,ax,ay,az); push3(m->normals,nx,ny,nz); push2(m->uvs,0,0);
+        push3(m->positions,bx,by,bz); push3(m->normals,nx,ny,nz); push2(m->uvs,0,0);
+        push3(m->positions,cx,cy,cz); push3(m->normals,nx,ny,nz); push2(m->uvs,0,0);
+    };
+    for (int i = 0; i < sides; i++) {
+        float t0=2*PI*i/sides, t1=2*PI*(i+1)/sides;
+        float r0=rad(i), r1=rad((i+1)%sides);
+        float x0=r0*std::cos(t0), z0=r0*std::sin(t0);
+        float x1=r1*std::cos(t1), z1=r1*std::sin(t1);
+        // Flanc (2 triangles) — même winding CCW que le cylindre
+        tri(x0,-hy,z0,  x0,hy,z0,  x1,hy,z1);
+        tri(x0,-hy,z0,  x1,hy,z1,  x1,-hy,z1);
+        // Sommet plat (normale +Y) : centre, haut1, haut0 (CCW vu de dessus)
+        tri(0,hy,0,  x1,hy,z1,  x0,hy,z0);
+    }
+    return m;
+}
+
 // ─── sol (quad horizontal) ──────────────────────────────────────────────────
 Mesh* Mesh::make_plane(float half, float y) {
     Mesh* m = new Mesh();

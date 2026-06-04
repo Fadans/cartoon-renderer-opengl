@@ -64,8 +64,9 @@ Techniques mises en œuvre (détail dans les `PHASE_*.md`) :
 - **Presets de style** : table `Style` factorisant tout le « look », bascule clavier ;
   un preset Phong (64 bandes, sans contour ni hachures) sert de comparaison.
 - **Scène** : liste d'instances `{mesh, model, couleur}` composée à partir de meshes
-  procéduraux (cube et cône ajoutés via `make_box`/`make_cone`), posés au sol ;
-  une seule boucle pour les ombres, une pour le rendu cel. Un panneau tourne (animation).
+  procéduraux (cube/cône via `make_box`/`make_cone`, **rochers facettés** via `make_rock`
+  = sphère déformée par bruit à normales plates), posés au sol ; une boucle pour les
+  ombres, une pour le rendu cel. Un panneau se balance (animation temporelle).
 
 ## Arborescence
 
@@ -75,7 +76,7 @@ Projet/
 ├── src/
 │   ├── main.cpp                 point d'entrée, boucle de rendu, presets, clavier
 │   ├── matrix4.{hh,cpp}         maths : lookat, frustum, translate/rotate/scale, shadow
-│   ├── mesh.{hh,cpp}            géométrie procédurale (sphère, cylindre, tore, cube, cône, sol)
+│   ├── mesh.{hh,cpp}            géométrie procédurale (sphère, cylindre, tore, cube, cône, rocher, sol)
 │   ├── camera.{hh,cpp}          caméra orbitale + déplacement fly
 │   ├── program.{hh,cpp}         compilation/link des shaders
 │   └── texture.{hh,cpp}         loader de texture (dormant — voir Notes)

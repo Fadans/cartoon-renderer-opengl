@@ -24,14 +24,14 @@ program* prog_cel    = nullptr;
 program* prog_post   = nullptr;  // passe de contour post-process
 program* prog_shadow = nullptr;  // ombre projetée planaire
 
-// Scène « casse de Pandora » (Borderlands) — voir initobjects()
+// Scène désertique (falaises + rochers) — voir initobjects()
 Mesh*    ground  = nullptr;  // sol désertique
-Mesh*    barrel  = nullptr;  // baril explosif (cylindre)
-Mesh*    tank    = nullptr;  // grosse cuve (cylindre couché)
-Mesh*    crate   = nullptr;  // caisse (cube)
-Mesh*    tire    = nullptr;  // pneu (tore)
-Mesh*    cone    = nullptr;  // cône de chantier
-Mesh*    rock    = nullptr;  // rocher (sphère)
+Mesh*    mesa_a  = nullptr;  // falaises / buttes (prismes érodés)
+Mesh*    mesa_b  = nullptr;
+Mesh*    mesa_c  = nullptr;
+Mesh*    rock_a  = nullptr;  // rochers facettés (bruit + normales plates)
+Mesh*    rock_b  = nullptr;
+Mesh*    rock_c  = nullptr;
 
 Camera   cam;
 
@@ -44,8 +44,8 @@ GLuint g_quad_vao   = 0;  // VAO vide pour le triangle plein écran
 int    g_win_w      = 1024;
 int    g_win_h      = 1024;
 
-// Aplats de couleur (palette Borderlands : désert + props industriels)
-const float COL_GROUND[3] = { 0.74f, 0.62f, 0.42f };  // sable / terre de Pandore
+// Sol désertique (sable rougeâtre, façon mesa de l'Ouest)
+const float COL_GROUND[3] = { 0.76f, 0.52f, 0.34f };
 
 const float GROUND_Y = -1.3f;   // hauteur du sol (plan de l'ombre)
 
@@ -54,6 +54,7 @@ mygl::matrix4 g_projection;
 // Animation
 float g_time      = 0.0f;
 bool  g_animating = true;
+float g_timescale = 1.0f;   // accélère le cycle jour/nuit pour la démo (touche T)
 
 // Paramètre cartoon interactif
 float g_num_bands = 4.0f;  // toggle +/-
@@ -233,16 +234,16 @@ void init_fbo(int w, int h) {
 }
 
 void initobjects() {
-    ground = Mesh::make_plane(12.0f, GROUND_Y);          // grand sol (ombres restent dessus)
-    barrel = Mesh::make_cylinder(28, 0.42f, 1.05f, true);// baril
-    tank   = Mesh::make_cylinder(32, 0.75f, 2.60f, true);// grosse cuve
-    crate  = Mesh::make_box(0.55f, 0.55f, 0.55f);        // caisse cubique
-    tire   = Mesh::make_torus(28, 40, 0.55f, 0.22f);     // pneu
-    cone   = Mesh::make_cone(28, 0.50f, 1.05f);          // cône de chantier
-    rock   = Mesh::make_sphere(32, 40, 1.0f);            // rocher (mis à l'échelle au rendu)
-    for (Mesh* m : { ground, barrel, tank, crate, tire, cone, rock })
+    ground = Mesh::make_plane(14.0f, GROUND_Y);          // grand sol (ombres + horizon)
+    mesa_a = Mesh::make_mesa(7, 3.0f, 4.5f, 0.25f,  2.0f);// grande falaise
+    mesa_b = Mesh::make_mesa(6, 2.0f, 3.2f, 0.30f,  9.0f);// butte
+    mesa_c = Mesh::make_mesa(8, 1.4f, 2.4f, 0.22f, 17.0f);// petite butte
+    rock_a = Mesh::make_rock(6, 8, 1.00f, 0.40f,  3.0f); // rochers facettés (seeds variés)
+    rock_b = Mesh::make_rock(5, 7, 0.60f, 0.48f, 11.0f);
+    rock_c = Mesh::make_rock(6, 9, 1.50f, 0.35f, 23.0f);
+    for (Mesh* m : { ground, mesa_a, mesa_b, mesa_c, rock_a, rock_b, rock_c })
         m->upload();
-    std::cout << "Scene Borderlands prete (7 meshes)\n";
+    std::cout << "Scene desert prete (7 meshes)\n";
 }
 
 void initPOV() {
@@ -252,7 +253,7 @@ void initPOV() {
 // ─── timer d'animation ────────────────────────────────────────────────────
 void timer(int) {
     if (g_animating) {
-        g_time += 0.016f;   // ~60 fps
+        g_time += 0.016f * g_timescale;   // ~60 fps × accélération démo
         glutPostRedisplay();
     }
     glutTimerFunc(16, timer, 0);
@@ -278,37 +279,51 @@ void display() {
     mygl::vec3   eye = cam.get_eye();
     const Style& s   = g_styles[g_style];   // preset de style courant
 
-    // ── Composition de la scène (casse de Pandora) ─────────────────────────
-    // Chaque instance = mesh + matrice model (posée au sol y=GROUND_Y) + couleur.
-    // L'offset vertical = demi-hauteur de l'objet pour qu'il repose sur le sol.
+    // ── Cycle jour/nuit (le soleil EST l'animation) ────────────────────────
+    // Le soleil décrit un cercle (période DAYLEN). Sa hauteur `elev` pilote la
+    // direction de lumière, sa couleur (orangé à l'horizon), l'ambiante, le ciel
+    // et la force des ombres. La nuit, une « lune » douce prend le relais.
+    auto sstep = [](float a, float b, float x){ float t=(x-a)/(b-a); t=t<0?0:(t>1?1:t); return t*t*(3.0f-2.0f*t); };
+    auto lerp  = [](float a, float b, float t){ return a + (b-a)*t; };
+    const float DAYLEN = 120.0f;                       // un cycle ≈ 2 min (× g_timescale)
+    float theta = g_time * (6.2831853f / DAYLEN) + 1.3f;  // +1.3 rad → démarre en plein jour
+    float elev  = std::sin(theta);                     // hauteur du soleil [-1,1]
+    mygl::vec3 sun  = mygl::vec3(std::cos(theta), std::sin(theta), 0.35f).normalize();
+    mygl::vec3 moon = mygl::vec3(-0.30f, 0.70f, -0.35f).normalize();
+    float dayf = sstep(-0.10f, 0.25f, elev);           // 0 = nuit, 1 = plein jour
+    float glow = (1.0f - sstep(0.0f, 0.30f, elev)) * sstep(-0.06f, 0.06f, elev); // lueur d'horizon
+
+    mygl::vec3 light = mygl::vec3(lerp(moon.x,sun.x,dayf), lerp(moon.y,sun.y,dayf),
+                                  lerp(moon.z,sun.z,dayf)).normalize();
+    // Couleur de lumière : nuit bleutée → jour blanc chaud, teintée d'orange à l'horizon
+    float lcr = lerp(lerp(0.38f,1.00f,dayf), 1.00f, glow);
+    float lcg = lerp(lerp(0.46f,0.97f,dayf), 0.55f, glow);
+    float lcb = lerp(lerp(0.78f,0.90f,dayf), 0.28f, glow);
+    float ambient_dn = lerp(0.06f, 0.17f, dayf);
+    // Ciel : nuit profonde → jour, bas teinté d'orange au couchant
+    float skT_r=lerp(0.04f,0.40f,dayf), skT_g=lerp(0.06f,0.62f,dayf), skT_b=lerp(0.14f,0.92f,dayf);
+    float skB_r=lerp(lerp(0.10f,0.86f,dayf),0.98f,glow),
+          skB_g=lerp(lerp(0.12f,0.82f,dayf),0.52f,glow),
+          skB_b=lerp(lerp(0.22f,0.70f,dayf),0.28f,glow);
+    float shadow_strength = sstep(0.12f, 0.45f, elev);  // ombres qui s'effacent quand le soleil descend
+
+    // ── Composition de la scène désertique (falaises + rochers) ────────────
+    // Instance = mesh + matrice model (posée/enterrée au sol y=GROUND_Y) + couleur.
     using M = mygl::matrix4;
-    const float G  = GROUND_Y;
-    const float Q  = 1.5708f;            // 90° pour coucher/dresser les objets
+    const float G = GROUND_Y;
     struct Inst { Mesh* mesh; M model; float col[3]; };
 
     std::vector<Inst> scene = {
-        // Grosse cuve couchée (cylindre sur le flanc) — métal teal
-        { tank,   M::translate(-3.0f, G+0.75f, -1.1f) * M::rotate_y(0.3f) * M::rotate_z(Q),
-                  {0.34f, 0.50f, 0.50f} },
-        // Trois barils explosifs rouges
-        { barrel, M::translate(-1.5f, G+0.525f,  0.8f),                      {0.80f,0.16f,0.12f} },
-        { barrel, M::translate(-0.8f, G+0.525f, -0.2f) * M::rotate_y(0.5f),  {0.80f,0.16f,0.12f} },
-        { barrel, M::translate(-1.9f, G+0.525f, -0.7f),                      {0.78f,0.20f,0.14f} },
-        // Pile de caisses (cubes) — rouille + jaune danger
-        { crate,  M::translate(1.6f,  G+0.55f,  0.6f)  * M::rotate_y(0.3f),  {0.80f,0.52f,0.20f} },
-        { crate,  M::translate(1.55f, G+1.65f,  0.55f) * M::rotate_y(-0.2f), {0.85f,0.68f,0.18f} },
-        { crate,  M::translate(2.5f,  G+0.55f, -0.1f)  * M::rotate_y(0.7f),  {0.78f,0.48f,0.16f} },
-        // Pneu dressé
-        { tire,   M::translate(2.4f,  G+0.77f,  1.2f)  * M::rotate_y(0.4f) * M::rotate_x(Q),
-                  {0.16f, 0.16f, 0.18f} },
-        // Cône de chantier
-        { cone,   M::translate(0.6f,  G+0.525f, 1.7f),                       {0.90f,0.42f,0.12f} },
-        // Rocher (sphère écrasée)
-        { rock,   M::translate(3.4f,  G+0.50f,  0.9f)  * M::scale(0.7f,0.5f,0.7f), {0.46f,0.45f,0.42f} },
-        // Mât + panneau qui TOURNE (seul élément animé) — repère « Catch-A-Ride »
-        { barrel, M::translate(3.6f,  G+1.16f, -1.6f)  * M::scale(0.12f,2.2f,0.12f), {0.28f,0.28f,0.30f} },
-        { crate,  M::translate(3.6f,  G+2.30f, -1.6f)  * M::rotate_y(0.5f*std::sin(g_time*1.6f)) * M::scale(0.9f,0.5f,0.10f),
-                  {0.88f, 0.70f, 0.15f} },
+        // Falaises / buttes au fond (silhouettées sur le ciel)
+        { mesa_a, M::translate(-7.0f, G+2.05f, -9.5f)  * M::rotate_y(0.3f), {0.70f,0.45f,0.30f} },
+        { mesa_c, M::translate( 0.6f, G+1.10f,-10.8f)  * M::rotate_y(0.7f), {0.74f,0.48f,0.32f} },
+        { mesa_b, M::translate( 6.5f, G+1.50f, -8.0f)  * M::rotate_y(1.1f), {0.66f,0.42f,0.28f} },
+        { mesa_b, M::translate( 9.5f, G+1.50f, -3.2f)  * M::rotate_y(2.0f), {0.64f,0.40f,0.27f} },
+        // Rochers (boulders) dispersés au premier plan
+        { rock_c, M::translate(-3.6f, G+0.75f, -2.6f)  * M::rotate_y(0.4f), {0.55f,0.42f,0.32f} },
+        { rock_a, M::translate( 2.6f, G+0.55f,  0.6f)  * M::rotate_y(0.8f), {0.58f,0.45f,0.34f} },
+        { rock_b, M::translate(-1.0f, G+0.32f,  1.8f)  * M::rotate_y(2.1f), {0.60f,0.47f,0.36f} },
+        { rock_a, M::translate( 0.9f, G+0.50f, -1.4f)  * M::rotate_y(1.5f), {0.52f,0.40f,0.30f} },
     };
 
     // ── PASSE 1 : SCÈNE CEL-SHADÉE → FBO (couleur + normales + profondeur) ──
@@ -319,15 +334,13 @@ void display() {
     glCullFace(GL_BACK);
     prog_cel->use();
 
-    // Lumière directionnelle fixe (soleil) : direction VERS la lumière.
-    // Directionnel → dot(n,l) uniforme sur les faces plates (sol, capuchons).
-    mygl::vec3 light = mygl::vec3(0.4f, 0.85f, 0.5f).normalize();
+    // Lumière directionnelle pilotée par le cycle jour/nuit (calculé plus haut).
     glUniform3f(ul_light,    light.x, light.y, light.z);
-    glUniform3f(ul_lightcol, 1.0f, 1.0f, 1.0f);
+    glUniform3f(ul_lightcol, lcr, lcg, lcb);
     glUniform3f(ul_eye,      eye.x, eye.y, eye.z);
 
     glUniform1f(ul_bands,    g_num_bands);
-    glUniform1f(ul_ambient,  s.ambient);
+    glUniform1f(ul_ambient,  ambient_dn);          // ambiante jour/nuit (remplace s.ambient)
     glUniform1f(ul_spec_thr, s.spec_thr);
     glUniform1f(ul_spec_str, s.spec_str);
 
@@ -349,14 +362,22 @@ void display() {
     mygl::matrix4 vp        = g_projection * view;
     const GLfloat* vd = view.data();  // colonne 1 du 3×3 = normale +Y en espace caméra
 
+    // Couleur d'ombre = sol → sombre selon la hauteur du soleil : à l'aube/crépuscule
+    // l'ombre se fond dans le sol (shadow_strength→0), évitant aussi les ombres
+    // démesurées du soleil rasant. La nuit (soleil sous l'horizon) : pas d'ombre.
     prog_shadow->use();
-    glUniform3f(ul_shadow_color,   0.20f, 0.17f, 0.14f);  // ombre brune (sol désertique)
+    float sh_r = lerp(COL_GROUND[0], 0.16f, shadow_strength);
+    float sh_g = lerp(COL_GROUND[1], 0.12f, shadow_strength);
+    float sh_b = lerp(COL_GROUND[2], 0.10f, shadow_strength);
+    glUniform3f(ul_shadow_color,   sh_r, sh_g, sh_b);
     glUniform3f(ul_shadow_gnormal, vd[4], vd[5], vd[6]);
-    glEnable(GL_POLYGON_OFFSET_FILL);
-    glPolygonOffset(-1.0f, -1.0f);
-    for (const Inst& it : scene)
-        draw_shadow(it.mesh, vp * shadowMat * it.model);
-    glDisable(GL_POLYGON_OFFSET_FILL);
+    if (elev > 0.12f) {
+        glEnable(GL_POLYGON_OFFSET_FILL);
+        glPolygonOffset(-1.0f, -1.0f);
+        for (const Inst& it : scene)
+            draw_shadow(it.mesh, vp * shadowMat * it.model);
+        glDisable(GL_POLYGON_OFFSET_FILL);
+    }
 
     // ── Objets (cel-shadés) ────────────────────────────────────────────────
     prog_cel->use();  // uniforms cel (lumière, bandes…) toujours en place
@@ -385,8 +406,9 @@ void display() {
     glUniform3fv(ul_post_color_far, 1, s.outline_far);
     glUniform1f (ul_post_thickness,     s.thickness);
     glUniform1f (ul_post_thickness_far, s.thickness_far);
-    glUniform3fv(ul_post_bg_top,    1, s.bg_top);
-    glUniform3fv(ul_post_bg_bottom, 1, s.bg_bottom);
+    // Fond = ciel du cycle jour/nuit (remplace le fond du preset)
+    glUniform3f(ul_post_bg_top,    skT_r, skT_g, skT_b);
+    glUniform3f(ul_post_bg_bottom, skB_r, skB_g, skB_b);
 
     glBindVertexArray(g_quad_vao);
     glDrawArrays(GL_TRIANGLES, 0, 3);
@@ -423,6 +445,10 @@ void keyboard(unsigned char k, int, int) {
             g_hatch = !g_hatch;
             std::cout << (g_hatch ? "Hachures ON\n" : "Hachures OFF\n");
             glutPostRedisplay(); break;
+        // Vitesse du cycle jour/nuit (démo) : ×1 → ×8 → ×30
+        case 't': case 'T':
+            g_timescale = (g_timescale < 2.0f) ? 8.0f : (g_timescale < 16.0f ? 30.0f : 1.0f);
+            std::cout << "Cycle jour/nuit x" << g_timescale << "\n"; break;
         // Presets de style (1..4) — dont « Phong » pour la comparaison
         case '1': case '2': case '3': case '4': {
             int i = k - '1';
@@ -453,7 +479,7 @@ int main(int argc, char* argv[]) {
     glutTimerFunc(16, timer, 0);
 
     std::cout << "Fleches=orbite  A/E=zoom  ZQSD=deplacer  ESPACE/C=monter-descendre\n"
-              << "+/-=bandes  H=hachures  1-4=styles  P=pause  ESC=quitter\n";
+              << "+/-=bandes  H=hachures  1-4=styles  T=vitesse jour/nuit  P=pause  ESC=quitter\n";
     std::cout << "Styles :";
     for (int i = 0; i < g_style_count; ++i)
         std::cout << "  " << (i + 1) << "=" << g_styles[i].name;

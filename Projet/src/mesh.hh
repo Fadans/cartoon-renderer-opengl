@@ -21,6 +21,12 @@ public:
     static Mesh* make_box(float hx, float hy, float hz);
     // Cône centré en l'origine : base (rayon `radius`) en y=-h/2, sommet en y=+h/2
     static Mesh* make_cone(int n, float radius, float height);
+    // Rocher facetté : sphère basse résolution déformée par bruit, normales PLATES
+    // (look low-poly anguleux). `jitter` = amplitude de déformation, `seed` = variante.
+    static Mesh* make_rock(int rings, int sectors, float radius, float jitter, float seed);
+    // Mesa / falaise : prisme à `sides` côtés, rayon érodé par colonne, sommet plat,
+    // flancs à normale plate (look de butte désertique).
+    static Mesh* make_mesa(int sides, float radius, float height, float jitter, float seed);
     // Quad horizontal (normale +Y) centré en (0,y,0), demi-côté `half`
     static Mesh* make_plane(float half, float y = 0.0f);
 
