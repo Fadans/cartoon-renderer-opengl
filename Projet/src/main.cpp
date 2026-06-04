@@ -53,6 +53,40 @@ bool  g_animating = true;
 float g_num_bands = 4.0f;  // toggle +/-
 bool  g_hatch     = true;  // hachures de croquis (toggle 'h')
 
+// ─── Presets de style (Phase 5 : démo interactive, touches 1..4) ────────────
+// Regroupe tous les réglages « look » : un appui = un changement de style complet.
+// Le dernier (« Phong ») désactive contour + hachures et monte les bandes → sert
+// de comparaison rendu réaliste ↔ cartoon pour la soutenance.
+struct Style {
+    const char* name;
+    float num_bands;
+    bool  hatch;
+    float ambient, spec_thr, spec_str;
+    float outline[3], outline_far[3];   // couleur du trait : premier plan / lointain
+    float thickness, thickness_far;     // épaisseur (px) / facteur au loin
+    float bg_top[3], bg_bottom[3];      // gradient de fond
+};
+
+const Style g_styles[] = {
+    //  nom              bands hatch  amb   sthr  sstr   outline(près)      outline(loin)       th   far    bg_top              bg_bottom
+    { "BD cartoon",      4.f,  true,  .15f, .55f, .70f, {0,0,0},           {.22f,.28f,.40f},   5.f, .35f, {.52f,.70f,.92f},   {.93f,.91f,.82f} },
+    { "Croquis encre",   3.f,  true,  .28f, .70f, .00f, {.10f,.07f,.05f},  {.40f,.34f,.28f},   4.f, .45f, {.90f,.86f,.76f},   {.80f,.74f,.62f} },
+    { "Pop comics",      5.f,  false, .22f, .50f, .95f, {0,0,0},           {0,0,0},            7.f, .60f, {.25f,.62f,.96f},   {.99f,.85f,.38f} },
+    { "Phong (compar.)", 64.f, false, .12f, .40f, .85f, {0,0,0},           {0,0,0},            0.f, 1.0f, {.80f,.82f,.86f},   {.60f,.62f,.66f} },
+};
+const int g_style_count = sizeof(g_styles) / sizeof(g_styles[0]);
+int g_style = 0;
+
+// Applique un preset : recopie ses bandes/hachures dans les globals modifiables
+// (pour que +/- et H restent un réglage fin par-dessus le style choisi).
+static void apply_style(int i) {
+    g_style     = i;
+    g_num_bands = g_styles[i].num_bands;
+    g_hatch     = g_styles[i].hatch;
+    std::cout << "Style " << (i + 1) << " : " << g_styles[i].name << "\n";
+    glutPostRedisplay();
+}
+
 // Uniforms cel
 GLint ul_model_cel;  // matrice model seule (espace monde pour éclairage)
 GLint ul_mv_cel, ul_proj_cel, ul_light, ul_lightcol, ul_eye;
@@ -236,7 +270,8 @@ static void draw_shadow(Mesh* mesh, const mygl::matrix4& mvp) {
 
 // ─── boucle de rendu ──────────────────────────────────────────────────────
 void display() {
-    mygl::vec3 eye = cam.get_eye();
+    mygl::vec3   eye = cam.get_eye();
+    const Style& s   = g_styles[g_style];   // preset de style courant
 
     // Matrices model avec rotation temporelle — vitesses différentes par objet
     mygl::matrix4 model_sphere   = mygl::matrix4::translate(-2.5f, 0, 0)
@@ -263,9 +298,9 @@ void display() {
     glUniform3f(ul_eye,      eye.x, eye.y, eye.z);
 
     glUniform1f(ul_bands,    g_num_bands);
-    glUniform1f(ul_ambient,  0.15f);
-    glUniform1f(ul_spec_thr, 0.55f);
-    glUniform1f(ul_spec_str, 0.7f);
+    glUniform1f(ul_ambient,  s.ambient);
+    glUniform1f(ul_spec_thr, s.spec_thr);
+    glUniform1f(ul_spec_str, s.spec_str);
 
     // Aplats : aucune texture, couleur unie par objet
     glUniform1i(ul_use_tex, 0);
@@ -317,17 +352,17 @@ void display() {
     glActiveTexture(GL_TEXTURE2); glBindTexture(GL_TEXTURE_2D, g_tex_depth);
 
     glUniform2f(ul_post_texel, 1.0f / g_win_w, 1.0f / g_win_h);
-    glUniform3f(ul_post_color, 0.0f, 0.0f, 0.0f);
     glUniform1f(ul_post_depth_thr,  0.30f);  // silhouettes (à monter si bruit, baisser si trous)
     glUniform1f(ul_post_normal_thr, 0.40f);  // plis internes (jonction cap/flanc)
-    glUniform1f(ul_post_thickness,  5.0f);   // épaisseur du trait au premier plan (px)
-    // Contour variable par profondeur : loin = plus fin + estompé vers le fond
-    glUniform1f(ul_post_thickness_far, 0.35f);             // loin → 35% de l'épaisseur
-    glUniform1f(ul_post_dist_near,     3.0f);              // distance « premier plan »
-    glUniform1f(ul_post_dist_far,      12.0f);             // distance « arrière-plan »
-    glUniform3f(ul_post_color_far, 0.22f, 0.28f, 0.40f);   // trait lointain bleu-gris estompé
-    glUniform3f(ul_post_bg_top,    0.52f, 0.70f, 0.92f);  // bleu ciel cartoon
-    glUniform3f(ul_post_bg_bottom, 0.93f, 0.91f, 0.82f);  // crème pâle (bas)
+    glUniform1f(ul_post_dist_near,  3.0f);   // distance « premier plan »
+    glUniform1f(ul_post_dist_far,   12.0f);  // distance « arrière-plan »
+    // Réglages « look » pilotés par le preset de style courant (thickness=0 → pas de contour)
+    glUniform3fv(ul_post_color,     1, s.outline);
+    glUniform3fv(ul_post_color_far, 1, s.outline_far);
+    glUniform1f (ul_post_thickness,     s.thickness);
+    glUniform1f (ul_post_thickness_far, s.thickness_far);
+    glUniform3fv(ul_post_bg_top,    1, s.bg_top);
+    glUniform3fv(ul_post_bg_bottom, 1, s.bg_bottom);
 
     glBindVertexArray(g_quad_vao);
     glDrawArrays(GL_TRIANGLES, 0, 3);
@@ -364,6 +399,12 @@ void keyboard(unsigned char k, int, int) {
             g_hatch = !g_hatch;
             std::cout << (g_hatch ? "Hachures ON\n" : "Hachures OFF\n");
             glutPostRedisplay(); break;
+        // Presets de style (1..4) — dont « Phong » pour la comparaison
+        case '1': case '2': case '3': case '4': {
+            int i = k - '1';
+            if (i < g_style_count) apply_style(i);
+            break;
+        }
         default:
             cam.on_key(k);
     }
@@ -387,6 +428,11 @@ int main(int argc, char* argv[]) {
     glutSpecialFunc([](int k, int, int){ cam.on_special(k); });
     glutTimerFunc(16, timer, 0);
 
-    std::cout << "Fleches=orbite  A/E=zoom  ZQSD=deplacer  ESPACE/C=monter-descendre  +/-=bandes  H=hachures  P=pause  ESC=quitter\n";
+    std::cout << "Fleches=orbite  A/E=zoom  ZQSD=deplacer  ESPACE/C=monter-descendre\n"
+              << "+/-=bandes  H=hachures  1-4=styles  P=pause  ESC=quitter\n";
+    std::cout << "Styles :";
+    for (int i = 0; i < g_style_count; ++i)
+        std::cout << "  " << (i + 1) << "=" << g_styles[i].name;
+    std::cout << "\n";
     glutMainLoop();
 }
