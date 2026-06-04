@@ -307,7 +307,7 @@ void display() {
         { rock,   M::translate(3.4f,  G+0.50f,  0.9f)  * M::scale(0.7f,0.5f,0.7f), {0.46f,0.45f,0.42f} },
         // Mât + panneau qui TOURNE (seul élément animé) — repère « Catch-A-Ride »
         { barrel, M::translate(3.6f,  G+1.16f, -1.6f)  * M::scale(0.12f,2.2f,0.12f), {0.28f,0.28f,0.30f} },
-        { crate,  M::translate(3.6f,  G+2.30f, -1.6f)  * M::rotate_y(g_time*0.7f) * M::scale(0.9f,0.5f,0.10f),
+        { crate,  M::translate(3.6f,  G+2.30f, -1.6f)  * M::rotate_y(0.5f*std::sin(g_time*1.6f)) * M::scale(0.9f,0.5f,0.10f),
                   {0.88f, 0.70f, 0.15f} },
     };
 

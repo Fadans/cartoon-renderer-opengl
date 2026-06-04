@@ -61,8 +61,8 @@ void Camera::on_key(unsigned char key) {
 
 void Camera::on_special(int key) {
     switch (key) {
-        case GLUT_KEY_LEFT:  angle_h -= speed; break;
-        case GLUT_KEY_RIGHT: angle_h += speed; break;
+        case GLUT_KEY_LEFT:  angle_h += speed; break;
+        case GLUT_KEY_RIGHT: angle_h -= speed; break;
         case GLUT_KEY_UP:    angle_v = std::min(angle_v + speed,  1.5f); break;
         case GLUT_KEY_DOWN:  angle_v = std::max(angle_v - speed, -1.5f); break;
     }
