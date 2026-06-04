@@ -1,3 +1,7 @@
+// ─── Rendu Cartoon Temps Réel (POGL) ───────────────────────────────────────
+// Point d'entrée : init GLUT/GLEW, boucle de rendu en 2 passes (cel shading +
+// ombres → FBO, puis contour/fond en post-process), presets de style et clavier.
+// Pipeline et techniques détaillés dans README.md et les PHASE_*.md.
 #include <GL/glew.h>
 #include <GL/freeglut.h>
 #include <iostream>
