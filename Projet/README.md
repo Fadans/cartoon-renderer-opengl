@@ -1,7 +1,10 @@
 # Rendu Cartoon Temps Réel — POGL
 
 Rendu **cartoon (cel shading) temps réel** en OpenGL 4.5, avec contours, ombrage
-en hachures, ombres portées et styles commutables en direct.
+en hachures, ombres portées et styles commutables en direct. La scène de démonstration
+est une **« casse de Pandora »** (clin d'œil à *Borderlands*) : cuve, barils explosifs,
+caisses, pneu, cône et panneau tournant, posés sur un sol désertique — tout en aplats
+de couleur soulignés d'un gros trait d'encre.
 
 > Projet de Programmation OpenGL (POGL). Sujet : « Rendu cartoon temps réel ».
 
@@ -60,6 +63,9 @@ Techniques mises en œuvre (détail dans les `PHASE_*.md`) :
 - **Hachures** : trame de croquis en espace écran, densité ∝ obscurité.
 - **Presets de style** : table `Style` factorisant tout le « look », bascule clavier ;
   un preset Phong (64 bandes, sans contour ni hachures) sert de comparaison.
+- **Scène** : liste d'instances `{mesh, model, couleur}` composée à partir de meshes
+  procéduraux (cube et cône ajoutés via `make_box`/`make_cone`), posés au sol ;
+  une seule boucle pour les ombres, une pour le rendu cel. Un panneau tourne (animation).
 
 ## Arborescence
 
@@ -69,7 +75,7 @@ Projet/
 ├── src/
 │   ├── main.cpp                 point d'entrée, boucle de rendu, presets, clavier
 │   ├── matrix4.{hh,cpp}         maths : lookat, frustum, translate/rotate/scale, shadow
-│   ├── mesh.{hh,cpp}            géométrie procédurale (sphère, cylindre+caps, tore, sol)
+│   ├── mesh.{hh,cpp}            géométrie procédurale (sphère, cylindre, tore, cube, cône, sol)
 │   ├── camera.{hh,cpp}          caméra orbitale + déplacement fly
 │   ├── program.{hh,cpp}         compilation/link des shaders
 │   └── texture.{hh,cpp}         loader de texture (dormant — voir Notes)

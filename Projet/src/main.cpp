@@ -7,6 +7,7 @@
 #include <iostream>
 #include <fstream>
 #include <sstream>
+#include <vector>
 
 #include "matrix4.hh"
 #include "program.hh"
@@ -23,10 +24,14 @@ program* prog_cel    = nullptr;
 program* prog_post   = nullptr;  // passe de contour post-process
 program* prog_shadow = nullptr;  // ombre projetée planaire
 
-Mesh*    sphere    = nullptr;
-Mesh*    cylinder  = nullptr;  // avec caps
-Mesh*    torus     = nullptr;
-Mesh*    ground    = nullptr;  // sol
+// Scène « casse de Pandora » (Borderlands) — voir initobjects()
+Mesh*    ground  = nullptr;  // sol désertique
+Mesh*    barrel  = nullptr;  // baril explosif (cylindre)
+Mesh*    tank    = nullptr;  // grosse cuve (cylindre couché)
+Mesh*    crate   = nullptr;  // caisse (cube)
+Mesh*    tire    = nullptr;  // pneu (tore)
+Mesh*    cone    = nullptr;  // cône de chantier
+Mesh*    rock    = nullptr;  // rocher (sphère)
 
 Camera   cam;
 
@@ -39,11 +44,8 @@ GLuint g_quad_vao   = 0;  // VAO vide pour le triangle plein écran
 int    g_win_w      = 1024;
 int    g_win_h      = 1024;
 
-// Couleurs unies par objet (textures retirées — on travaille en aplats)
-const float COL_SPHERE[3]   = { 0.85f, 0.40f, 0.13f };  // orange
-const float COL_CYLINDER[3] = { 0.27f, 0.55f, 0.30f };  // vert
-const float COL_TORUS[3]    = { 0.20f, 0.35f, 0.70f };  // bleu
-const float COL_GROUND[3]   = { 0.72f, 0.74f, 0.66f };  // sol beige-vert
+// Aplats de couleur (palette Borderlands : désert + props industriels)
+const float COL_GROUND[3] = { 0.74f, 0.62f, 0.42f };  // sable / terre de Pandore
 
 const float GROUND_Y = -1.3f;   // hauteur du sol (plan de l'ombre)
 
@@ -231,17 +233,16 @@ void init_fbo(int w, int h) {
 }
 
 void initobjects() {
-    sphere   = Mesh::make_sphere(48, 64, 1.0f);
-    cylinder = Mesh::make_cylinder(64, 0.5f, 1.5f, true);  // caps pour le rendu
-    torus    = Mesh::make_torus(48, 64, 0.65f, 0.28f);
-    ground   = Mesh::make_plane(12.0f, GROUND_Y);          // grand sol (ombres restent dessus)
-    sphere->upload();
-    cylinder->upload();
-    torus->upload();
-    ground->upload();
-    std::cout << "Sphere: "   << sphere->vertex_count()   << " verts\n";
-    std::cout << "Cylinder: " << cylinder->vertex_count() << " verts\n";
-    std::cout << "Torus: "    << torus->vertex_count()    << " verts\n";
+    ground = Mesh::make_plane(12.0f, GROUND_Y);          // grand sol (ombres restent dessus)
+    barrel = Mesh::make_cylinder(28, 0.42f, 1.05f, true);// baril
+    tank   = Mesh::make_cylinder(32, 0.75f, 2.60f, true);// grosse cuve
+    crate  = Mesh::make_box(0.55f, 0.55f, 0.55f);        // caisse cubique
+    tire   = Mesh::make_torus(28, 40, 0.55f, 0.22f);     // pneu
+    cone   = Mesh::make_cone(28, 0.50f, 1.05f);          // cône de chantier
+    rock   = Mesh::make_sphere(32, 40, 1.0f);            // rocher (mis à l'échelle au rendu)
+    for (Mesh* m : { ground, barrel, tank, crate, tire, cone, rock })
+        m->upload();
+    std::cout << "Scene Borderlands prete (7 meshes)\n";
 }
 
 void initPOV() {
@@ -277,14 +278,38 @@ void display() {
     mygl::vec3   eye = cam.get_eye();
     const Style& s   = g_styles[g_style];   // preset de style courant
 
-    // Matrices model avec rotation temporelle — vitesses différentes par objet
-    mygl::matrix4 model_sphere   = mygl::matrix4::translate(-2.5f, 0, 0)
-                                 * mygl::matrix4::rotate_y(g_time * 0.7f);
-    mygl::matrix4 model_cylinder = mygl::matrix4::translate( 0.0f, 0, 0)
-                                 * mygl::matrix4::rotate_y(g_time * 1.0f);
-    mygl::matrix4 model_torus    = mygl::matrix4::translate( 2.5f, 0, 0)
-                                 * mygl::matrix4::rotate_y(g_time * 0.5f)
-                                 * mygl::matrix4::rotate_x(g_time * 0.3f);
+    // ── Composition de la scène (casse de Pandora) ─────────────────────────
+    // Chaque instance = mesh + matrice model (posée au sol y=GROUND_Y) + couleur.
+    // L'offset vertical = demi-hauteur de l'objet pour qu'il repose sur le sol.
+    using M = mygl::matrix4;
+    const float G  = GROUND_Y;
+    const float Q  = 1.5708f;            // 90° pour coucher/dresser les objets
+    struct Inst { Mesh* mesh; M model; float col[3]; };
+
+    std::vector<Inst> scene = {
+        // Grosse cuve couchée (cylindre sur le flanc) — métal teal
+        { tank,   M::translate(-3.0f, G+0.75f, -1.1f) * M::rotate_y(0.3f) * M::rotate_z(Q),
+                  {0.34f, 0.50f, 0.50f} },
+        // Trois barils explosifs rouges
+        { barrel, M::translate(-1.5f, G+0.525f,  0.8f),                      {0.80f,0.16f,0.12f} },
+        { barrel, M::translate(-0.8f, G+0.525f, -0.2f) * M::rotate_y(0.5f),  {0.80f,0.16f,0.12f} },
+        { barrel, M::translate(-1.9f, G+0.525f, -0.7f),                      {0.78f,0.20f,0.14f} },
+        // Pile de caisses (cubes) — rouille + jaune danger
+        { crate,  M::translate(1.6f,  G+0.55f,  0.6f)  * M::rotate_y(0.3f),  {0.80f,0.52f,0.20f} },
+        { crate,  M::translate(1.55f, G+1.65f,  0.55f) * M::rotate_y(-0.2f), {0.85f,0.68f,0.18f} },
+        { crate,  M::translate(2.5f,  G+0.55f, -0.1f)  * M::rotate_y(0.7f),  {0.78f,0.48f,0.16f} },
+        // Pneu dressé
+        { tire,   M::translate(2.4f,  G+0.77f,  1.2f)  * M::rotate_y(0.4f) * M::rotate_x(Q),
+                  {0.16f, 0.16f, 0.18f} },
+        // Cône de chantier
+        { cone,   M::translate(0.6f,  G+0.525f, 1.7f),                       {0.90f,0.42f,0.12f} },
+        // Rocher (sphère écrasée)
+        { rock,   M::translate(3.4f,  G+0.50f,  0.9f)  * M::scale(0.7f,0.5f,0.7f), {0.46f,0.45f,0.42f} },
+        // Mât + panneau qui TOURNE (seul élément animé) — repère « Catch-A-Ride »
+        { barrel, M::translate(3.6f,  G+1.16f, -1.6f)  * M::scale(0.12f,2.2f,0.12f), {0.28f,0.28f,0.30f} },
+        { crate,  M::translate(3.6f,  G+2.30f, -1.6f)  * M::rotate_y(g_time*0.7f) * M::scale(0.9f,0.5f,0.10f),
+                  {0.88f, 0.70f, 0.15f} },
+    };
 
     // ── PASSE 1 : SCÈNE CEL-SHADÉE → FBO (couleur + normales + profondeur) ──
     glBindFramebuffer(GL_FRAMEBUFFER, g_fbo);
@@ -325,25 +350,20 @@ void display() {
     const GLfloat* vd = view.data();  // colonne 1 du 3×3 = normale +Y en espace caméra
 
     prog_shadow->use();
-    glUniform3f(ul_shadow_color,   0.22f, 0.24f, 0.28f);
+    glUniform3f(ul_shadow_color,   0.20f, 0.17f, 0.14f);  // ombre brune (sol désertique)
     glUniform3f(ul_shadow_gnormal, vd[4], vd[5], vd[6]);
     glEnable(GL_POLYGON_OFFSET_FILL);
     glPolygonOffset(-1.0f, -1.0f);
-    draw_shadow(sphere,   vp * shadowMat * model_sphere);
-    draw_shadow(cylinder, vp * shadowMat * model_cylinder);
-    draw_shadow(torus,    vp * shadowMat * model_torus);
+    for (const Inst& it : scene)
+        draw_shadow(it.mesh, vp * shadowMat * it.model);
     glDisable(GL_POLYGON_OFFSET_FILL);
 
     // ── Objets (cel-shadés) ────────────────────────────────────────────────
     prog_cel->use();  // uniforms cel (lumière, bandes…) toujours en place
-    glUniform4f(ul_obj_color, COL_SPHERE[0], COL_SPHERE[1], COL_SPHERE[2], 1.0f);
-    draw_cel(sphere, model_sphere);
-
-    glUniform4f(ul_obj_color, COL_CYLINDER[0], COL_CYLINDER[1], COL_CYLINDER[2], 1.0f);
-    draw_cel(cylinder, model_cylinder);
-
-    glUniform4f(ul_obj_color, COL_TORUS[0], COL_TORUS[1], COL_TORUS[2], 1.0f);
-    draw_cel(torus, model_torus);
+    for (const Inst& it : scene) {
+        glUniform4f(ul_obj_color, it.col[0], it.col[1], it.col[2], 1.0f);
+        draw_cel(it.mesh, it.model);
+    }
 
     // ── PASSE 2 : CONTOUR POST-PROCESS → ÉCRAN ─────────────────────────────
     glBindFramebuffer(GL_FRAMEBUFFER, 0);

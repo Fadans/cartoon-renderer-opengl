@@ -157,6 +157,67 @@ Mesh* Mesh::make_torus(int rings, int sectors, float R, float r) {
     return m;
 }
 
+// ─── boîte (cube paramétrable) ──────────────────────────────────────────────
+// 6 faces planes, normale constante par face (look facetté = cartoon).
+// Pour chaque face : centre + 2 demi-arêtes (u,v) tels que u×v = normale sortante.
+Mesh* Mesh::make_box(float hx, float hy, float hz) {
+    Mesh* m = new Mesh();
+    auto face = [&](float cx,float cy,float cz,
+                    float ux,float uy,float uz,
+                    float vx,float vy,float vz,
+                    float nx,float ny,float nz) {
+        float c0[3]={cx-ux-vx, cy-uy-vy, cz-uz-vz};
+        float c1[3]={cx+ux-vx, cy+uy-vy, cz+uz-vz};
+        float c2[3]={cx+ux+vx, cy+uy+vy, cz+uz+vz};
+        float c3[3]={cx-ux+vx, cy-uy+vy, cz-uz+vz};
+        auto vert=[&](float* c,float u,float w){
+            push3(m->positions,c[0],c[1],c[2]); push3(m->normals,nx,ny,nz); push2(m->uvs,u,w);
+        };
+        vert(c0,0,0); vert(c1,1,0); vert(c2,1,1);   // CCW vue de l'extérieur
+        vert(c0,0,0); vert(c2,1,1); vert(c3,0,1);
+    };
+    face( hx,0,0,  0,hy,0,  0,0,hz,   1, 0, 0);   // +X
+    face(-hx,0,0,  0,0,hz,  0,hy,0,  -1, 0, 0);   // -X
+    face(0, hy,0,  0,0,hz,  hx,0,0,   0, 1, 0);   // +Y
+    face(0,-hy,0,  hx,0,0,  0,0,hz,   0,-1, 0);   // -Y
+    face(0,0, hz,  hx,0,0,  0,hy,0,   0, 0, 1);   // +Z
+    face(0,0,-hz,  0,hy,0,  hx,0,0,   0, 0,-1);   // -Z
+    return m;
+}
+
+// ─── cône (flanc + cap bas) ─────────────────────────────────────────────────
+// Base de rayon `radius` en y=-h/2, sommet en y=+h/2.
+// Normale du flanc = normalize(cos θ·h, radius, sin θ·h) : pente ∝ radius/h.
+Mesh* Mesh::make_cone(int n, float radius, float height) {
+    Mesh* m = new Mesh();
+    float hy = height / 2.0f;
+    auto sideN = [&](float th) -> std::array<float,3> {
+        float nx=std::cos(th)*height, ny=radius, nz=std::sin(th)*height;
+        float l=std::sqrt(nx*nx+ny*ny+nz*nz);
+        return { nx/l, ny/l, nz/l };
+    };
+    for (int i = 0; i < n; i++) {
+        float t0=2*PI*i/n, t1=2*PI*(i+1)/n, tm=2*PI*(i+0.5f)/n;
+        float x0=radius*std::cos(t0), z0=radius*std::sin(t0);
+        float x1=radius*std::cos(t1), z1=radius*std::sin(t1);
+        auto n0=sideN(t0), n1=sideN(t1), nm=sideN(tm);
+        float u0=(float)i/n, u1=(float)(i+1)/n;
+
+        // Flanc — base0, sommet, base1 (CCW vu de dehors)
+        push3(m->positions,x0,-hy,z0); push3(m->normals,n0[0],n0[1],n0[2]); push2(m->uvs,u0,0);
+        push3(m->positions,0,  hy, 0); push3(m->normals,nm[0],nm[1],nm[2]); push2(m->uvs,(u0+u1)*0.5f,1);
+        push3(m->positions,x1,-hy,z1); push3(m->normals,n1[0],n1[1],n1[2]); push2(m->uvs,u1,0);
+
+        // Cap bas (normale -Y) — center, base0, base1
+        float cu0=0.5f+0.5f*std::cos(t0), cv0=0.5f+0.5f*std::sin(t0);
+        float cu1=0.5f+0.5f*std::cos(t1), cv1=0.5f+0.5f*std::sin(t1);
+        push3(m->positions,0,-hy,0);  push3(m->normals,0,-1,0); push2(m->uvs,.5f,.5f);
+        push3(m->positions,x0,-hy,z0);push3(m->normals,0,-1,0); push2(m->uvs,cu0,cv0);
+        push3(m->positions,x1,-hy,z1);push3(m->normals,0,-1,0); push2(m->uvs,cu1,cv1);
+    }
+    return m;
+}
+
 // ─── sol (quad horizontal) ──────────────────────────────────────────────────
 Mesh* Mesh::make_plane(float half, float y) {
     Mesh* m = new Mesh();
