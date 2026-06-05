@@ -76,7 +76,7 @@ struct Style {
 
 const Style g_styles[] = {
     //  nom              bands hatch  amb   sthr  sstr   outline(près)      outline(loin)       th   far    bg_top              bg_bottom
-    { "BD cartoon",      4.f,  true,  .15f, .55f, .70f, {0,0,0},           {.22f,.28f,.40f},   5.f, .35f, {.52f,.70f,.92f},   {.93f,.91f,.82f} },
+    { "BD cartoon",      4.f,  true,  .15f, .55f, .70f, {0,0,0},           {0,0,0},            5.f, .35f, {.52f,.70f,.92f},   {.93f,.91f,.82f} },
     { "Croquis encre",   3.f,  true,  .28f, .70f, .00f, {.10f,.07f,.05f},  {.40f,.34f,.28f},   4.f, .45f, {.90f,.86f,.76f},   {.80f,.74f,.62f} },
     { "Pop comics",      5.f,  false, .22f, .50f, .00f, {0,0,0},           {0,0,0},            7.f, .60f, {.25f,.62f,.96f},   {.99f,.85f,.38f} },
     { "Phong (compar.)", 64.f, false, .12f, .40f, .85f, {0,0,0},           {0,0,0},            0.f, 1.0f, {.80f,.82f,.86f},   {.60f,.62f,.66f} },

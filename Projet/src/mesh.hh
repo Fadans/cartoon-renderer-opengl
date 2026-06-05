@@ -1,11 +1,23 @@
 #pragma once
 #include <GL/glew.h>
 #include <vector>
+#include <string>
+#include "texture.hh"
+#include <assimp/scene.h>
+#include <assimp/matrix4x4.h>
 
 // Attribut locations fixes (layout(location=N) dans tous les shaders)
 static const GLint ATTR_POSITION = 0;
 static const GLint ATTR_NORMAL   = 1;
 static const GLint ATTR_UV       = 2;
+
+// Sous-mesh = plage de sommets partageant une texture (modèles chargés via Assimp)
+struct SubMesh {
+    int start_vertex;
+    int vertex_count;
+    std::string tex_path;
+    Texture* texture = nullptr;
+};
 
 class Mesh {
 public:
@@ -35,21 +47,31 @@ public:
     // Quad horizontal (normale +Y) centré en (0,y,0), demi-côté `half`
     static Mesh* make_plane(float half, float y = 0.0f);
 
+    // Chargement d'un modèle externe (OBJ/glTF/DAE…) via Assimp — utilisé par le
+    // binaire Zelda. Remplit positions/normales/uvs + des SubMesh texturés.
+    static Mesh* load_from_file(const std::string& path);
+
     // Upload vers le GPU (à appeler après initglew)
     void upload();
 
     // Dessin
     void draw() const;
+    void draw_textured(GLint ul_use_tex) const;   // lie la texture de chaque SubMesh
 
     int vertex_count() const { return (int)positions.size() / 3; }
 
 private:
     Mesh() = default;
 
+    static void process_node(aiNode* node, const aiScene* scene,
+                             Mesh* m, aiMatrix4x4 parent_transform,
+                             const std::string& dir);
+
     // Données CPU
     std::vector<GLfloat> positions;
     std::vector<GLfloat> normals;
     std::vector<GLfloat> uvs;
+    std::vector<SubMesh> submeshes;
 
     // GPU
     GLuint vao_id    = 0;

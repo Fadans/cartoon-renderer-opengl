@@ -1,10 +1,13 @@
 # Rendu Cartoon Temps Réel — POGL
 
 Rendu **cartoon (cel shading) temps réel** en OpenGL 4.5, avec contours, ombrage
-en hachures, ombres portées et styles commutables en direct. La scène est un **désert
-façon Lucky Luke** : deux **buttes géantes** (mesas à sommet plat, flancs rocheux),
-touffes d'herbe et cailloux sur un grand sol sableux, le tout sous un **cycle jour/nuit**
-(le soleil tourne) — en aplats de couleur soulignés d'un gros trait d'encre.
+en hachures, ombres portées, **cycle jour/nuit** et styles commutables en direct.
+
+Le projet produit **deux binaires** (mêmes shaders et même pipeline cartoon) :
+- **`cartoon`** — un **désert façon Lucky Luke** : buttes géantes (mesas), herbe et
+  cailloux procéduraux sur un grand sol sableux.
+- **`zelda`** — un **visualiseur de modèles externes** (Wind Waker : Toon Link + le
+  bateau *King of Red Lions*) chargés via **Assimp**.
 
 > Projet de Programmation OpenGL (POGL). Sujet : « Rendu cartoon temps réel ».
 
@@ -16,12 +19,14 @@ touffes d'herbe et cailloux sur un grand sol sableux, le tout sous un **cycle jo
 
 ```bash
 cd Projet
-make            # g++, C++11, profil OpenGL core 4.5
-./cartoon
-make clean      # nettoyer les objets + binaire
+make            # construit LES DEUX binaires : cartoon et zelda
+./cartoon       # le désert
+./zelda         # le visualiseur Zelda (Toon Link + bateau)
+make clean      # nettoyer les objets + binaires
 ```
 
-**Dépendances :** OpenGL 4.5, GLEW, FreeGLUT (`-lGL -lGLEW -lglut -lpthread`).
+**Dépendances :** OpenGL 4.5, GLEW, FreeGLUT, **Assimp** (`-lGL -lGLEW -lglut -lpthread -lassimp`).
+Sur Arch : `sudo pacman -S assimp`.
 
 ## Contrôles
 
@@ -67,9 +72,12 @@ Techniques mises en œuvre (détail dans les `PHASE_*.md`) :
 - **Hachures** : trame de croquis en espace écran, densité ∝ obscurité.
 - **Presets de style** : table `Style` factorisant tout le « look », bascule clavier ;
   un preset Phong (64 bandes, sans contour ni hachures) sert de comparaison.
-- **Géométrie procédurale** : buttes (`make_butte` = rocher bruité tronqué → mesa à
-  sommet plat), rochers (`make_rock`), herbe (`make_grass`), sol (`make_plane`). Scène =
-  liste d'instances `{mesh, model, couleur}` : une boucle pour les ombres, une pour le cel.
+- **Géométrie procédurale** (desert) : buttes (`make_butte` = rocher bruité tronqué →
+  mesa à sommet plat), rochers (`make_rock`), herbe (`make_grass`), sol (`make_plane`).
+  Scène = liste d'instances `{mesh, model, couleur}` : une boucle ombres, une boucle cel.
+- **Chargement de modèles** (zelda) : `Mesh::load_from_file` via **Assimp** (OBJ/glTF/DAE)
+  → remplit le même VAO + des `SubMesh` texturés ; `draw_textured` lie la texture par
+  sous-mesh. Les deux apps partagent caméra, shaders et pipeline (un seul `mesh.cpp`).
 
 ## Arborescence
 
@@ -77,27 +85,28 @@ Techniques mises en œuvre (détail dans les `PHASE_*.md`) :
 Projet/
 ├── Makefile
 ├── src/
-│   ├── main.cpp                 point d'entrée, boucle de rendu, presets, clavier
-│   ├── matrix4.{hh,cpp}         maths : lookat, frustum, translate/rotate/scale, shadow
-│   ├── mesh.{hh,cpp}            géométrie procédurale (butte, rocher, herbe, sol + primitives en réserve)
-│   ├── camera.{hh,cpp}          caméra orbitale + déplacement fly
-│   ├── program.{hh,cpp}         compilation/link des shaders
-│   └── texture.{hh,cpp}         loader de texture (dormant — voir Notes)
-├── shaders/
-│   ├── cel_{vertex,fragment}.glsl       cel shading + hachures (passe 1)
-│   ├── shadow_{vertex,fragment}.glsl    ombres projetées planaires
-│   └── post_{vertex,fragment}.glsl      fond + contour (passe 2)
-├── lib/  image*.{hh,cpp}        chargement TGA (TIFO) — utilisé par texture.* (dormant)
-└── *.md  CONTEXT, PHASES, PHASE_1..6  documentation détaillée par phase
+│   ├── main.cpp                 app DÉSERT (→ cartoon) : scène, jour/nuit, presets, clavier
+│   ├── main_zelda.cpp           app ZELDA (→ zelda) : charge Toon Link + bateau (Assimp)
+│   ├── matrix4.{hh,cpp}         maths : lookat, frustum, translate/rotate/scale, shadow   ┐
+│   ├── camera.{hh,cpp}          caméra orbitale + déplacement fly                          │ partagés
+│   ├── program.{hh,cpp}         compilation/link des shaders                               │ par les
+│   ├── mesh.{hh,cpp}            meshes procéduraux + loader Assimp (load_from_file)         │ 2 apps
+│   └── texture.{hh,cpp}         chargement de texture PNG (stb_image)                      ┘
+├── shaders/   cel / shadow / post (.glsl) — partagés par les 2 binaires
+├── assets/    Toon Link (obj+mtl), red_lion (gltf) — modèles chargés par zelda
+├── lib/       stb_image.h (+ image*.{hh,cpp} TIFO, en réserve)
+└── *.md       CONTEXT, PHASES, PHASE_1..6  documentation détaillée par phase
 ```
 
 ## Notes
 
-- **Aplats de couleur** : le rendu utilise des couleurs unies par objet. La branche
-  `use_texture` (shader + `texture.*` + `lib/`) est **conservée mais inactive**, prête
-  pour d'éventuelles textures faites maison.
-- Les shaders `.glsl` sont **lus à l'exécution** : modifier un shader ne nécessite pas
-  de recompiler, juste relancer `./cartoon`.
-- `GL error 1280` au démarrage : bénin, laissé par `glewInit()` en profil core.
-- Capture d'écran automatique indisponible sous Wayland/Hyprland → vérification visuelle
-  manuelle.
+- **Deux binaires, code partagé** : `cartoon` et `zelda` lient les mêmes objets
+  (caméra, shaders, `mesh.cpp`) ; seul le `main` diffère. Le shader d'ombre est
+  rétro-compatible (clip du terrain seulement si `ground_half > 0`).
+- ⚠️ **Textures des modèles Zelda manquantes du dépôt** : `.gitignore` exclut `*.png`,
+  donc les textures de Toon Link (`clothes.png`…) et `eau_windwaker.png` ne sont **pas
+  commitées**. Le modèle charge sa géométrie mais sans texture tant qu'elles ne sont pas
+  ajoutées (`git add -f` ou exception `assets/` dans `.gitignore`).
+- Les shaders `.glsl` sont **lus à l'exécution** : pas besoin de recompiler, juste relancer.
+- `GL error 1280` au démarrage : bénin (`glewInit()` en profil core).
+- Capture d'écran auto indisponible sous Wayland/Hyprland → vérification visuelle manuelle.

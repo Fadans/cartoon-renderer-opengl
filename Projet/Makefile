@@ -1,23 +1,24 @@
 CC        = g++
 CXX_FLAGS = -Wall -Wextra -O2 -g -std=c++11 -m64 -Isrc -Ilib
-LDFLAGS   = -lGL -lGLEW -lglut -lpthread
+LDFLAGS   = -lGL -lGLEW -lglut -lpthread -lassimp
 
-SRCS = src/main.cpp src/matrix4.cpp src/program.cpp \
-       src/mesh.cpp src/camera.cpp src/texture.cpp   \
-       lib/image.cpp lib/image_io.cpp
+# Code partagé par les deux applications (désert + Zelda)
+SHARED = src/matrix4.cpp src/program.cpp src/mesh.cpp src/camera.cpp src/texture.cpp
+SHARED_OBJS = $(SHARED:.cpp=.o)
 
-OBJS   = $(SRCS:.cpp=.o)
-TARGET = cartoon
+# Deux binaires à la racine : cartoon (désert) et zelda (visualiseur de modèles)
+all: cartoon zelda
 
-all: $(TARGET)
+cartoon: src/main.o $(SHARED_OBJS)
+	$(CC) -o $@ $^ $(CXX_FLAGS) $(LDFLAGS)
 
-$(TARGET): $(OBJS)
+zelda: src/main_zelda.o $(SHARED_OBJS)
 	$(CC) -o $@ $^ $(CXX_FLAGS) $(LDFLAGS)
 
 %.o: %.cpp
 	$(CC) -c -o $@ $< $(CXX_FLAGS)
 
 clean:
-	rm -f $(OBJS) $(TARGET)
+	rm -f src/*.o cartoon zelda
 
 .PHONY: all clean
