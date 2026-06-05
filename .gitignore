@@ -12,6 +12,8 @@ Cours/
 *.png
 *.jpg
 *.webp
+# …mais on GARDE les textures des modèles Zelda (nécessaires au binaire zelda)
+!Projet/assets/**/*.png
 
 # ── Binaires compilés ─────────────────────────────────────────────────────
 Projet/cartoon
