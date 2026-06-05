@@ -2,8 +2,6 @@
 #include <cmath>
 #include <array>
 #include <cstdio>
-#include <assimp/Importer.hpp>
-#include <assimp/postprocess.h>
 
 static const float PI = 3.14159265f;
 
@@ -420,64 +418,20 @@ void Mesh::draw_textured(GLint ul_use_tex) const {
     glBindVertexArray(0);
 }
 
-// ─── chargement de modèle externe via Assimp ─────────────────────────────────
-void Mesh::process_node(aiNode* node, const aiScene* scene,
-                        Mesh* m, aiMatrix4x4 parent_transform,
-                        const std::string& dir) {
-    aiMatrix4x4 transform = parent_transform * node->mTransformation;
-
-    for (unsigned int mi = 0; mi < node->mNumMeshes; mi++) {
-        aiMesh* mesh = scene->mMeshes[node->mMeshes[mi]];
-        SubMesh sub;
-        sub.start_vertex = (int)m->positions.size() / 3;
-
-        for (unsigned int i = 0; i < mesh->mNumFaces; i++) {
-            aiFace& face = mesh->mFaces[i];
-            for (unsigned int j = 0; j < face.mNumIndices; j++) {
-                unsigned int idx = face.mIndices[j];
-                aiVector3D pos = transform * mesh->mVertices[idx];
-                push3(m->positions, pos.x, pos.y, pos.z);
-                if (mesh->HasNormals()) {
-                    aiMatrix3x3 normalMat(transform); normalMat.Transpose();
-                    aiVector3D nor = normalMat * mesh->mNormals[idx]; nor.Normalize();
-                    push3(m->normals, nor.x, nor.y, nor.z);
-                } else {
-                    push3(m->normals, 0, 1, 0);
-                }
-                if (mesh->mTextureCoords[0])
-                    push2(m->uvs, mesh->mTextureCoords[0][idx].x, mesh->mTextureCoords[0][idx].y);
-                else
-                    push2(m->uvs, 0, 0);
-            }
-        }
-        sub.vertex_count = (int)m->positions.size() / 3 - sub.start_vertex;
-
-        if (mesh->mMaterialIndex < scene->mNumMaterials) {
-            aiMaterial* mat = scene->mMaterials[mesh->mMaterialIndex];
-            aiString tex_name;
-            if (mat->GetTexture(aiTextureType_DIFFUSE, 0, &tex_name) == AI_SUCCESS)
-                sub.tex_path = dir + tex_name.C_Str();
-        }
-        m->submeshes.push_back(sub);
-    }
-    for (unsigned int i = 0; i < node->mNumChildren; i++)
-        process_node(node->mChildren[i], scene, m, transform, dir);
+// ─── API d'ajout pour le loader de modèles (mesh_loader.cpp, lié à zelda) ─────
+// Le chargement Assimp lui-même est dans mesh_loader.cpp pour que ce fichier (et
+// donc le binaire cartoon) reste SANS dépendance Assimp.
+void Mesh::push_vertex(float px, float py, float pz,
+                       float nx, float ny, float nz, float u, float v) {
+    push3(positions, px, py, pz);
+    push3(normals,   nx, ny, nz);
+    push2(uvs,       u,  v);
 }
 
-Mesh* Mesh::load_from_file(const std::string& path) {
-    Assimp::Importer importer;
-    const aiScene* scene = importer.ReadFile(path,
-        aiProcess_Triangulate | aiProcess_GenSmoothNormals |
-        aiProcess_FlipUVs | aiProcess_JoinIdenticalVertices);
-    if (!scene || !scene->mRootNode) {
-        std::fprintf(stderr, "Assimp: impossible de charger %s\n", path.c_str());
-        return nullptr;
-    }
-    std::string dir = path.substr(0, path.find_last_of("/\\") + 1);
-    Mesh* m = new Mesh();
-    aiMatrix4x4 identity;
-    process_node(scene->mRootNode, scene, m, identity, dir);
-    std::printf("Loaded %s : %d verts, %d submeshes\n",
-                path.c_str(), (int)m->positions.size() / 3, (int)m->submeshes.size());
-    return m;
+void Mesh::push_submesh(int start_vertex, int vertex_count, const std::string& tex_path) {
+    SubMesh sub;
+    sub.start_vertex = start_vertex;
+    sub.vertex_count = vertex_count;
+    sub.tex_path     = tex_path;
+    submeshes.push_back(sub);
 }

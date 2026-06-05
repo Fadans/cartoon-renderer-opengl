@@ -573,5 +573,9 @@ int main(int argc, char *argv[])
     for (int i = 0; i < g_style_count; ++i)
         std::cout << "  " << (i + 1) << "=" << g_styles[i].name;
     std::cout << "\n";
+
+    apply_style(2);                 // style 3 par défaut pour zelda
+    cam.angle_h += 1.5708f;         // caméra tournée de 90° vers la droite
+
     glutMainLoop();
 }

@@ -3,8 +3,8 @@
 #include <vector>
 #include <string>
 #include "texture.hh"
-#include <assimp/scene.h>
-#include <assimp/matrix4x4.h>
+// NB : aucune dépendance Assimp ici → le binaire désert (cartoon) se construit
+// sans Assimp. Le chargement de modèles vit dans mesh_loader.cpp (lié à zelda seul).
 
 // Attribut locations fixes (layout(location=N) dans tous les shaders)
 static const GLint ATTR_POSITION = 0;
@@ -47,9 +47,15 @@ public:
     // Quad horizontal (normale +Y) centré en (0,y,0), demi-côté `half`
     static Mesh* make_plane(float half, float y = 0.0f);
 
-    // Chargement d'un modèle externe (OBJ/glTF/DAE…) via Assimp — utilisé par le
-    // binaire Zelda. Remplit positions/normales/uvs + des SubMesh texturés.
+    // Chargement d'un modèle externe (OBJ/glTF/DAE…) via Assimp — implémenté dans
+    // mesh_loader.cpp (lié au seul binaire zelda). Remplit le mesh via push_vertex/
+    // push_submesh ci-dessous → mesh.hh/.cpp restent SANS dépendance Assimp.
     static Mesh* load_from_file(const std::string& path);
+
+    // API d'ajout utilisée par le loader de modèles (mesh_loader.cpp)
+    void push_vertex(float px, float py, float pz,
+                     float nx, float ny, float nz, float u, float v);
+    void push_submesh(int start_vertex, int vertex_count, const std::string& tex_path);
 
     // Upload vers le GPU (à appeler après initglew)
     void upload();
@@ -62,10 +68,6 @@ public:
 
 private:
     Mesh() = default;
-
-    static void process_node(aiNode* node, const aiScene* scene,
-                             Mesh* m, aiMatrix4x4 parent_transform,
-                             const std::string& dir);
 
     // Données CPU
     std::vector<GLfloat> positions;

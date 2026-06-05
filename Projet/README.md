@@ -25,8 +25,9 @@ make            # construit LES DEUX binaires : cartoon et zelda
 make clean      # nettoyer les objets + binaires
 ```
 
-**Dépendances :** OpenGL 4.5, GLEW, FreeGLUT, **Assimp** (`-lGL -lGLEW -lglut -lpthread -lassimp`).
-Sur Arch : `sudo pacman -S assimp`.
+**Dépendances :** OpenGL 4.5, GLEW, FreeGLUT. **Assimp requis uniquement pour `zelda`**
+(chargement de modèles) — `cartoon` se construit sans. Si Assimp est absent, `make` bâtit
+`cartoon` et saute `zelda` (message). Sur Arch : `sudo pacman -S assimp`.
 
 ## Contrôles
 
@@ -86,11 +87,12 @@ Projet/
 ├── Makefile
 ├── src/
 │   ├── main.cpp                 app DÉSERT (→ cartoon) : scène, jour/nuit, presets, clavier
-│   ├── main_zelda.cpp           app ZELDA (→ zelda) : charge Toon Link + bateau (Assimp)
+│   ├── main_zelda.cpp           app ZELDA (→ zelda) : charge Toon Link + bateau
+│   ├── mesh_loader.cpp          loader Assimp (lié à zelda SEUL — cartoon n'en dépend pas)
 │   ├── matrix4.{hh,cpp}         maths : lookat, frustum, translate/rotate/scale, shadow   ┐
 │   ├── camera.{hh,cpp}          caméra orbitale + déplacement fly                          │ partagés
 │   ├── program.{hh,cpp}         compilation/link des shaders                               │ par les
-│   ├── mesh.{hh,cpp}            meshes procéduraux + loader Assimp (load_from_file)         │ 2 apps
+│   ├── mesh.{hh,cpp}            meshes procéduraux (+ push_vertex pour le loader)           │ 2 apps
 │   └── texture.{hh,cpp}         chargement de texture PNG (stb_image)                      ┘
 ├── shaders/   cel / shadow / post (.glsl) — partagés par les 2 binaires
 ├── assets/    Toon Link (obj+mtl), red_lion (gltf) — modèles chargés par zelda
