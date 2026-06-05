@@ -3,15 +3,11 @@
 #include <cstring>
 #include <iostream>
 
-// ─── destructeur ──────────────────────────────────────────────────────────
 program::~program() {
     if (id_)  glDeleteProgram(id_);
     if (log_) std::free(log_);
 }
 
-// ─── compile_shader ───────────────────────────────────────────────────────
-// Cours section 8 "Compilation d'un shader"
-// Retourne 0 si échec.
 GLuint program::compile_shader(GLenum type, const std::string& src) {
     GLuint shader = glCreateShader(type);
     const char* c = src.c_str();
@@ -33,9 +29,6 @@ GLuint program::compile_shader(GLenum type, const std::string& src) {
     return shader;
 }
 
-// ─── make_program ─────────────────────────────────────────────────────────
-// Cours section 8 "Édition de liens"
-// Pipeline : compile vertex → compile fragment → link → détruire les shaders
 program* program::make_program(const std::string& vertex_src,
                                const std::string& fragment_src) {
     program* p = new program();
@@ -55,7 +48,6 @@ program* program::make_program(const std::string& vertex_src,
     glAttachShader(p->id_, frag);
     glLinkProgram(p->id_);
 
-    // On peut détruire les shaders : le programme a sa propre copie compilée
     glDetachShader(p->id_, vert); glDeleteShader(vert);
     glDetachShader(p->id_, frag); glDeleteShader(frag);
 
@@ -67,7 +59,7 @@ program* program::make_program(const std::string& vertex_src,
         p->log_ = (char*)std::malloc(len + 1);
         glGetProgramInfoLog(p->id_, len, nullptr, p->log_);
         std::cerr << "Program link error:\n" << p->log_ << "\n";
-        return p; // is_ready() == false
+        return p;
     }
 
     p->ready_ = true;

@@ -3,16 +3,10 @@
 #include <GL/glew.h>
 #include <string>
 
-// Encapsule la compilation + linkage d'un programme shader OpenGL.
-// Usage :
-//   program* p = program::make_program(vert_src, frag_src);
-//   if (!p || !p->is_ready()) { /* erreur */ }
-//   p->use();
 class program {
 public:
     ~program();
 
-    // Compile les deux shaders et les linke. Retourne nullptr si échec.
     static program* make_program(const std::string& vertex_src,
                                  const std::string& fragment_src);
 

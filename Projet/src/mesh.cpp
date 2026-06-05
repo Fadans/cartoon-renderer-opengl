@@ -12,8 +12,6 @@ Mesh::~Mesh() {
     if (vao_id)  glDeleteVertexArrays(1, &vao_id);
 }
 
-// ─── helpers internes ─────────────────────────────────────────────────────
-
 static void push3(std::vector<GLfloat>& v, float a, float b, float c) {
     v.push_back(a); v.push_back(b); v.push_back(c);
 }
@@ -21,12 +19,6 @@ static void push2(std::vector<GLfloat>& v, float a, float b) {
     v.push_back(a); v.push_back(b);
 }
 
-// ─── sphère UV ────────────────────────────────────────────────────────────
-// rings  = divisions latitude (nord → sud)
-// sectors = divisions longitude (autour de Y)
-// P(phi, theta) = R*(sin phi*cos theta, cos phi, sin phi*sin theta)
-// normale = P/R (sphère unitaire normalisée = position)
-// UV : u = theta/2π, v = phi/π
 Mesh* Mesh::make_sphere(int rings, int sectors, float radius) {
     Mesh* m = new Mesh();
 
@@ -38,7 +30,6 @@ Mesh* Mesh::make_sphere(int rings, int sectors, float radius) {
             float theta0 = 2*PI * s       / sectors;
             float theta1 = 2*PI * (s + 1) / sectors;
 
-            // 4 coins du quad
             float x00=std::sin(phi0)*std::cos(theta0), y00=std::cos(phi0), z00=std::sin(phi0)*std::sin(theta0);
             float x10=std::sin(phi1)*std::cos(theta0), y10=std::cos(phi1), z10=std::sin(phi1)*std::sin(theta0);
             float x11=std::sin(phi1)*std::cos(theta1), y11=std::cos(phi1), z11=std::sin(phi1)*std::sin(theta1);
@@ -47,7 +38,6 @@ Mesh* Mesh::make_sphere(int rings, int sectors, float radius) {
             float u0=(float)s/sectors, u1=(float)(s+1)/sectors;
             float v0=(float)r/rings,   v1=(float)(r+1)/rings;
 
-            // Triangle 1 : A(r,s), D(r,s+1), C(r+1,s+1)  — CCW vu de l'extérieur
             push3(m->positions, x00*radius, y00*radius, z00*radius);
             push3(m->normals,   x00, y00, z00);
             push2(m->uvs, u0, v0);
@@ -60,7 +50,6 @@ Mesh* Mesh::make_sphere(int rings, int sectors, float radius) {
             push3(m->normals,   x11, y11, z11);
             push2(m->uvs, u1, v1);
 
-            // Triangle 2 : A(r,s), C(r+1,s+1), B(r+1,s)
             push3(m->positions, x00*radius, y00*radius, z00*radius);
             push3(m->normals,   x00, y00, z00);
             push2(m->uvs, u0, v0);
@@ -77,7 +66,6 @@ Mesh* Mesh::make_sphere(int rings, int sectors, float radius) {
     return m;
 }
 
-// ─── cylindre avec caps ───────────────────────────────────────────────────
 Mesh* Mesh::make_cylinder(int n, float radius, float height, bool with_caps) {
     Mesh* m = new Mesh();
     for (int i = 0; i < n; i++) {
@@ -86,11 +74,10 @@ Mesh* Mesh::make_cylinder(int n, float radius, float height, bool with_caps) {
         float x1=radius*std::cos(t1), z1=radius*std::sin(t1);
         float u0=(float)i/n, u1=(float)(i+1)/n;
 
-        // Flanc — Triangle 1 : A, D, C
         push3(m->positions,x0,-height/2,z0); push3(m->normals,x0/radius,0,z0/radius); push2(m->uvs,u0,0);
         push3(m->positions,x0, height/2,z0); push3(m->normals,x0/radius,0,z0/radius); push2(m->uvs,u0,1);
         push3(m->positions,x1, height/2,z1); push3(m->normals,x1/radius,0,z1/radius); push2(m->uvs,u1,1);
-        // Flanc — Triangle 2 : A, C, B
+
         push3(m->positions,x0,-height/2,z0); push3(m->normals,x0/radius,0,z0/radius); push2(m->uvs,u0,0);
         push3(m->positions,x1, height/2,z1); push3(m->normals,x1/radius,0,z1/radius); push2(m->uvs,u1,1);
         push3(m->positions,x1,-height/2,z1); push3(m->normals,x1/radius,0,z1/radius); push2(m->uvs,u1,0);
@@ -98,11 +85,11 @@ Mesh* Mesh::make_cylinder(int n, float radius, float height, bool with_caps) {
         if (with_caps) {
             float cu0=0.5f+0.5f*std::cos(t0), cv0=0.5f+0.5f*std::sin(t0);
             float cu1=0.5f+0.5f*std::cos(t1), cv1=0.5f+0.5f*std::sin(t1);
-            // Cap haut
+
             push3(m->positions,0, height/2, 0); push3(m->normals,0,1,0); push2(m->uvs,.5f,.5f);
             push3(m->positions,x1,height/2,z1); push3(m->normals,0,1,0); push2(m->uvs,cu1,cv1);
             push3(m->positions,x0,height/2,z0); push3(m->normals,0,1,0); push2(m->uvs,cu0,cv0);
-            // Cap bas
+
             push3(m->positions,0,-height/2, 0); push3(m->normals,0,-1,0); push2(m->uvs,.5f,.5f);
             push3(m->positions,x0,-height/2,z0); push3(m->normals,0,-1,0); push2(m->uvs,cu0,cv0);
             push3(m->positions,x1,-height/2,z1); push3(m->normals,0,-1,0); push2(m->uvs,cu1,cv1);
@@ -111,11 +98,6 @@ Mesh* Mesh::make_cylinder(int n, float radius, float height, bool with_caps) {
     return m;
 }
 
-// ─── tore ─────────────────────────────────────────────────────────────────
-// R = rayon majeur (centre → centre du tube)
-// r = rayon mineur (rayon du tube)
-// P(u,v) = ((R + r·cos v)·cos u,  r·sin v,  (R + r·cos v)·sin u)
-// Normale = (cos v·cos u,  sin v,  cos v·sin u)
 Mesh* Mesh::make_torus(int rings, int sectors, float R, float r) {
     Mesh* m = new Mesh();
 
@@ -138,9 +120,6 @@ Mesh* Mesh::make_torus(int rings, int sectors, float R, float r) {
                          std::cos(v)*std::sin(u) };
             };
 
-            // CCW vu de l'extérieur : A(u0,v0), D(u0,v1), C(u1,v1), B(u1,v0)
-            // Triangle 1 : A, D, C
-            // Triangle 2 : A, C, B
             auto emit = [&](float u, float v, float fu, float fv) {
                 auto p = P(u,v); auto n = N(u,v);
                 push3(m->positions, p[0], p[1], p[2]);
@@ -158,9 +137,6 @@ Mesh* Mesh::make_torus(int rings, int sectors, float R, float r) {
     return m;
 }
 
-// ─── boîte (cube paramétrable) ──────────────────────────────────────────────
-// 6 faces planes, normale constante par face (look facetté = cartoon).
-// Pour chaque face : centre + 2 demi-arêtes (u,v) tels que u×v = normale sortante.
 Mesh* Mesh::make_box(float hx, float hy, float hz) {
     Mesh* m = new Mesh();
     auto face = [&](float cx,float cy,float cz,
@@ -174,21 +150,18 @@ Mesh* Mesh::make_box(float hx, float hy, float hz) {
         auto vert=[&](float* c,float u,float w){
             push3(m->positions,c[0],c[1],c[2]); push3(m->normals,nx,ny,nz); push2(m->uvs,u,w);
         };
-        vert(c0,0,0); vert(c1,1,0); vert(c2,1,1);   // CCW vue de l'extérieur
+        vert(c0,0,0); vert(c1,1,0); vert(c2,1,1);
         vert(c0,0,0); vert(c2,1,1); vert(c3,0,1);
     };
-    face( hx,0,0,  0,hy,0,  0,0,hz,   1, 0, 0);   // +X
-    face(-hx,0,0,  0,0,hz,  0,hy,0,  -1, 0, 0);   // -X
-    face(0, hy,0,  0,0,hz,  hx,0,0,   0, 1, 0);   // +Y
-    face(0,-hy,0,  hx,0,0,  0,0,hz,   0,-1, 0);   // -Y
-    face(0,0, hz,  hx,0,0,  0,hy,0,   0, 0, 1);   // +Z
-    face(0,0,-hz,  0,hy,0,  hx,0,0,   0, 0,-1);   // -Z
+    face( hx,0,0,  0,hy,0,  0,0,hz,   1, 0, 0);
+    face(-hx,0,0,  0,0,hz,  0,hy,0,  -1, 0, 0);
+    face(0, hy,0,  0,0,hz,  hx,0,0,   0, 1, 0);
+    face(0,-hy,0,  hx,0,0,  0,0,hz,   0,-1, 0);
+    face(0,0, hz,  hx,0,0,  0,hy,0,   0, 0, 1);
+    face(0,0,-hz,  0,hy,0,  hx,0,0,   0, 0,-1);
     return m;
 }
 
-// ─── cône (flanc + cap bas) ─────────────────────────────────────────────────
-// Base de rayon `radius` en y=-h/2, sommet en y=+h/2.
-// Normale du flanc = normalize(cos θ·h, radius, sin θ·h) : pente ∝ radius/h.
 Mesh* Mesh::make_cone(int n, float radius, float height) {
     Mesh* m = new Mesh();
     float hy = height / 2.0f;
@@ -204,12 +177,10 @@ Mesh* Mesh::make_cone(int n, float radius, float height) {
         auto n0=sideN(t0), n1=sideN(t1), nm=sideN(tm);
         float u0=(float)i/n, u1=(float)(i+1)/n;
 
-        // Flanc — base0, sommet, base1 (CCW vu de dehors)
         push3(m->positions,x0,-hy,z0); push3(m->normals,n0[0],n0[1],n0[2]); push2(m->uvs,u0,0);
         push3(m->positions,0,  hy, 0); push3(m->normals,nm[0],nm[1],nm[2]); push2(m->uvs,(u0+u1)*0.5f,1);
         push3(m->positions,x1,-hy,z1); push3(m->normals,n1[0],n1[1],n1[2]); push2(m->uvs,u1,0);
 
-        // Cap bas (normale -Y) — center, base0, base1
         float cu0=0.5f+0.5f*std::cos(t0), cv0=0.5f+0.5f*std::sin(t0);
         float cu1=0.5f+0.5f*std::cos(t1), cv1=0.5f+0.5f*std::sin(t1);
         push3(m->positions,0,-hy,0);  push3(m->normals,0,-1,0); push2(m->uvs,.5f,.5f);
@@ -219,17 +190,13 @@ Mesh* Mesh::make_cone(int n, float radius, float height) {
     return m;
 }
 
-// ─── rocher facetté (sphère déformée par bruit, normales plates) ─────────────
-// Bruit lisse déterministe (lumps basse fréquence) à partir d'une direction.
-// Déterministe sur la DIRECTION → les sommets dupliqués entre triangles reçoivent
-// le même déplacement (pas de fissure dans le maillage).
 static float rock_noise(float x, float y, float z, float seed) {
     float n = std::sin(x*2.7f + seed*1.3f)
             + std::sin(y*3.1f + seed*2.1f)
             + std::sin(z*2.3f + seed*0.7f)
             + std::sin((x+y)*1.9f + seed*0.5f)
             + std::sin((y+z)*2.5f + seed*1.7f);
-    return n * 0.2f;   // ≈ [-1,1]
+    return n * 0.2f;
 }
 
 Mesh* Mesh::make_rock(int rings, int sectors, float radius, float jitter, float seed) {
@@ -241,7 +208,7 @@ Mesh* Mesh::make_rock(int rings, int sectors, float radius, float jitter, float 
         float d = radius * (1.0f + jitter * rock_noise(u[0],u[1],u[2], seed));
         return { u[0]*d, u[1]*d, u[2]*d };
     };
-    // Triangle à normale PLATE (calculée depuis les 3 sommets déformés → facettes)
+
     auto tri = [&](std::array<float,3> a, std::array<float,3> b, std::array<float,3> c) {
         float ux=b[0]-a[0], uy=b[1]-a[1], uz=b[2]-a[2];
         float vx=c[0]-a[0], vy=c[1]-a[1], vz=c[2]-a[2];
@@ -258,25 +225,24 @@ Mesh* Mesh::make_rock(int rings, int sectors, float radius, float jitter, float 
             float th0=2*PI*s/sectors, th1=2*PI*(s+1)/sectors;
             auto A=disp(dir(phi0,th0)), B=disp(dir(phi1,th0));
             auto C=disp(dir(phi1,th1)), D=disp(dir(phi0,th1));
-            tri(A,D,C); tri(A,C,B);   // même winding CCW que make_sphere
+            tri(A,D,C); tri(A,C,B);
         }
     }
     return m;
 }
 
-// ─── butte (rocher facetté tronqué : sommet & base plats) ────────────────────
 Mesh* Mesh::make_butte(int rings, int sectors, float radius, float height, float jitter, float seed) {
     Mesh* m = new Mesh();
     float hy = height * 0.5f;
     auto dir = [](float phi, float th) -> std::array<float,3> {
         return { std::sin(phi)*std::cos(th), std::cos(phi), std::sin(phi)*std::sin(th) };
     };
-    // Point : rayon horizontal bruité (flancs rocheux) ; Y étiré puis CLAMPÉ → plat haut/bas.
+
     auto pt = [&](std::array<float,3> u) -> std::array<float,3> {
         float fr = 1.0f + jitter * rock_noise(u[0],u[1],u[2], seed);
-        if (fr < 0.35f) fr = 0.35f;                   // garde un rayon positif même à fort jitter
+        if (fr < 0.35f) fr = 0.35f;
         float rr = radius * fr;
-        float y  = u[1] * hy * 3.0f;                  // étire très fort → grand plateau plat (troncature +++)
+        float y  = u[1] * hy * 3.0f;
         y = y < -hy ? -hy : (y > hy ? hy : y);
         return { u[0]*rr, y, u[2]*rr };
     };
@@ -298,11 +264,10 @@ Mesh* Mesh::make_butte(int rings, int sectors, float radius, float height, float
     return m;
 }
 
-// ─── mesa / falaise (prisme érodé, sommet plat) ──────────────────────────────
 Mesh* Mesh::make_mesa(int sides, float radius, float height, float jitter, float seed) {
     Mesh* m = new Mesh();
     float hy = height / 2.0f;
-    // rayon par colonne : modulé par 2 sinus → silhouette érodée, irrégulière
+
     auto rad = [&](int i) {
         float a = 2.0f*PI*i/sides;
         return radius * (1.0f + jitter*0.5f*(std::sin(a*2.0f + seed) + std::sin(a*3.0f + seed*1.7f)));
@@ -320,39 +285,37 @@ Mesh* Mesh::make_mesa(int sides, float radius, float height, float jitter, float
         float r0=rad(i), r1=rad((i+1)%sides);
         float x0=r0*std::cos(t0), z0=r0*std::sin(t0);
         float x1=r1*std::cos(t1), z1=r1*std::sin(t1);
-        // Flanc (2 triangles) — même winding CCW que le cylindre
+
         tri(x0,-hy,z0,  x0,hy,z0,  x1,hy,z1);
         tri(x0,-hy,z0,  x1,hy,z1,  x1,-hy,z1);
-        // Sommet plat (normale +Y) : centre, haut1, haut0 (CCW vu de dessus)
+
         tri(0,hy,0,  x1,hy,z1,  x0,hy,z0);
     }
     return m;
 }
 
-// ─── touffe d'herbe (brins fins, double face) ────────────────────────────────
 Mesh* Mesh::make_grass(int blades, float height, float spread, float seed) {
     Mesh* m = new Mesh();
     auto rnd=[&](float k){ float v=std::sin(seed*12.99f + k*78.23f)*43758.5f; return v-std::floor(v); };
     for(int i=0;i<blades;i++){
         float ang  = rnd(i*1.0f)*2*PI;
-        float lean = 0.15f + rnd(i*1.7f)*0.45f;            // inclinaison du brin
+        float lean = 0.15f + rnd(i*1.7f)*0.45f;
         float h    = height*(0.6f + 0.6f*rnd(i*2.3f));
         float rad  = spread*rnd(i*3.1f);
-        float bx=std::cos(ang)*rad, bz=std::sin(ang)*rad;  // base décalée du centre
-        float w=0.035f;                                    // demi-largeur à la base
+        float bx=std::cos(ang)*rad, bz=std::sin(ang)*rad;
+        float w=0.035f;
         float tx=std::cos(ang+1.5708f)*w, tz=std::sin(ang+1.5708f)*w;
-        float px=bx+std::cos(ang)*lean*h, pz=bz+std::sin(ang)*lean*h; // pointe (penchée)
+        float px=bx+std::cos(ang)*lean*h, pz=bz+std::sin(ang)*lean*h;
         auto V=[&](float x,float y,float z){ push3(m->positions,x,y,z); push3(m->normals,0,1,0); push2(m->uvs,0,0); };
-        V(bx-tx,0,bz-tz); V(bx+tx,0,bz+tz); V(px,h,pz);    // face avant
-        V(bx+tx,0,bz+tz); V(bx-tx,0,bz-tz); V(px,h,pz);    // face arrière (double face)
+        V(bx-tx,0,bz-tz); V(bx+tx,0,bz+tz); V(px,h,pz);
+        V(bx+tx,0,bz+tz); V(bx-tx,0,bz-tz); V(px,h,pz);
     }
     return m;
 }
 
-// ─── sol (quad horizontal) ──────────────────────────────────────────────────
 Mesh* Mesh::make_plane(float half, float y) {
     Mesh* m = new Mesh();
-    // 2 triangles, normale +Y, CCW vu de dessus
+
     auto v = [&](float x, float z, float u, float w) {
         push3(m->positions, x, y, z);
         push3(m->normals,   0, 1, 0);
@@ -363,8 +326,6 @@ Mesh* Mesh::make_plane(float half, float y) {
     return m;
 }
 
-// ─── upload GPU ───────────────────────────────────────────────────────────
-// Utilise les locations fixes (layout qualifiers dans les shaders)
 void Mesh::upload() {
     if (uploaded_) return;
 
@@ -385,8 +346,6 @@ void Mesh::upload() {
 
     glBindVertexArray(0);
 
-    // Modèles chargés (Assimp) : charger la texture de chaque sous-mesh (sinon
-    // `submeshes` est vide pour les meshes procéduraux → boucle sans effet).
     for (auto& sub : submeshes) {
         if (!sub.tex_path.empty()) {
             sub.texture = Texture::load(sub.tex_path.c_str());
@@ -403,7 +362,6 @@ void Mesh::draw() const {
     glBindVertexArray(0);
 }
 
-// Dessine en liant la texture de chaque sous-mesh (modèles Assimp).
 void Mesh::draw_textured(GLint ul_use_tex) const {
     glBindVertexArray(vao_id);
     for (const auto& sub : submeshes) {
@@ -418,9 +376,6 @@ void Mesh::draw_textured(GLint ul_use_tex) const {
     glBindVertexArray(0);
 }
 
-// ─── API d'ajout pour le loader de modèles (mesh_loader.cpp, lié à zelda) ─────
-// Le chargement Assimp lui-même est dans mesh_loader.cpp pour que ce fichier (et
-// donc le binaire cartoon) reste SANS dépendance Assimp.
 void Mesh::push_vertex(float px, float py, float pz,
                        float nx, float ny, float nz, float u, float v) {
     push3(positions, px, py, pz);

@@ -14,7 +14,7 @@ Texture::~Texture()
 Texture *Texture::load(const char *path)
 {
     int w, h, channels;
-    // Force le chargement en RGBA (4 canaux) pour tout supporter
+
     unsigned char *data = stbi_load(path, &w, &h, &channels, 4);
     if (!data)
     {

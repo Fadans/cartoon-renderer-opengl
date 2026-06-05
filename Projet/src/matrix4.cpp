@@ -32,8 +32,6 @@ std::ostream& operator<<(std::ostream& out, const matrix4& mat) {
     return out;
 }
 
-// ─── Transformations ──────────────────────────────────────────────────────
-
 matrix4 matrix4::translate(GLfloat tx, GLfloat ty, GLfloat tz) {
     matrix4 r = identity();
     r.m[12]=tx; r.m[13]=ty; r.m[14]=tz;
@@ -67,15 +65,11 @@ matrix4 matrix4::scale(GLfloat sx, GLfloat sy, GLfloat sz) {
     return r;
 }
 
-// ─── ombre projetée planaire ────────────────────────────────────────────────
-// Projette tout point sur le plan (a,b,c,d) en suivant la droite lumière→point.
-// Lumière ponctuelle l=(lx,ly,lz,1). dot = a·lx + b·ly + c·lz + d.
-// Forme matricielle classique : M = dot·I − l·planeᵀ (en homogène).
 matrix4 matrix4::shadow(GLfloat a, GLfloat b, GLfloat c, GLfloat d,
                         const vec3& light, GLfloat lw) {
     GLfloat lx=light.x, ly=light.y, lz=light.z;
     GLfloat dot = a*lx + b*ly + c*lz + d*lw;
-    matrix4 r;  // colonne-major : m[col*4 + row]
+    matrix4 r;
     r.m[0]=dot - lx*a;  r.m[4]=-lx*b;       r.m[8] =-lx*c;       r.m[12]=-lx*d;
     r.m[1]=-ly*a;       r.m[5]=dot - ly*b;  r.m[9] =-ly*c;       r.m[13]=-ly*d;
     r.m[2]=-lz*a;       r.m[6]=-lz*b;       r.m[10]=dot - lz*c;  r.m[14]=-lz*d;
@@ -83,7 +77,6 @@ matrix4 matrix4::shadow(GLfloat a, GLfloat b, GLfloat c, GLfloat d,
     return r;
 }
 
-// ─── lookat ───────────────────────────────────────────────────────────────
 matrix4 lookat(GLfloat eX,GLfloat eY,GLfloat eZ,
                GLfloat cX,GLfloat cY,GLfloat cZ,
                GLfloat uX,GLfloat uY,GLfloat uZ) {
@@ -98,7 +91,6 @@ matrix4 lookat(GLfloat eX,GLfloat eY,GLfloat eZ,
     return r;
 }
 
-// ─── frustum ──────────────────────────────────────────────────────────────
 matrix4 frustum(GLfloat l,GLfloat r,GLfloat b,GLfloat t,GLfloat n,GLfloat f) {
     matrix4 m;
     m.m[0]=2*n/(r-l); m.m[5]=2*n/(t-b);
@@ -108,4 +100,4 @@ matrix4 frustum(GLfloat l,GLfloat r,GLfloat b,GLfloat t,GLfloat n,GLfloat f) {
     return m;
 }
 
-} // namespace mygl
+}

@@ -16,7 +16,7 @@ struct vec3 {
 
 class matrix4 {
 public:
-    GLfloat m[16]; // column-major : m[col*4 + row]
+    GLfloat m[16];
 
     matrix4();
     matrix4  operator* (const matrix4& rhs) const;
@@ -25,14 +25,11 @@ public:
 
     static matrix4 identity();
     static matrix4 translate(GLfloat tx, GLfloat ty, GLfloat tz);
-    static matrix4 rotate_x(GLfloat angle);   // radians
+    static matrix4 rotate_x(GLfloat angle);
     static matrix4 rotate_y(GLfloat angle);
     static matrix4 rotate_z(GLfloat angle);
     static matrix4 scale(GLfloat sx, GLfloat sy, GLfloat sz);
 
-    // Matrice d'ombre projetée planaire : aplatit la géométrie sur le plan
-    // (a,b,c,d). `light` = position (lw=1) ou direction vers la lumière (lw=0,
-    // soleil directionnel → projection parallèle).
     static matrix4 shadow(GLfloat a, GLfloat b, GLfloat c, GLfloat d,
                           const vec3& light, GLfloat lw = 1.0f);
 
@@ -47,4 +44,4 @@ matrix4 frustum(GLfloat left, GLfloat right,
                 GLfloat bottom, GLfloat top,
                 GLfloat znear, GLfloat zfar);
 
-} // namespace mygl
+}

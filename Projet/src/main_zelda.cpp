@@ -18,7 +18,6 @@
             std::cerr << "GL error " << e << " line " << __LINE__ << "\n"; \
     } while (0)
 
-// ─── état global ──────────────────────────────────────────────────────────
 program *prog_cel = nullptr;
 program *prog_post = nullptr;
 program *prog_shadow = nullptr;
@@ -30,7 +29,6 @@ Texture *tex_water = nullptr;
 
 Camera cam;
 
-// ─── FBO ──────────────────────────────────────────────────────────────────
 GLuint g_fbo = 0;
 GLuint g_tex_color = 0;
 GLuint g_tex_normal = 0;
@@ -52,11 +50,10 @@ mygl::matrix4 g_projection;
 
 float g_time = 0.0f;
 bool g_animating = true;
-float g_timescale = 1.0f;   // vitesse du cycle jour/nuit (touche T)
+float g_timescale = 1.0f;
 float g_num_bands = 4.0f;
 bool g_hatch = true;
 
-// ─── Presets de style ─────────────────────────────────────────────────────
 struct Style
 {
     const char *name;
@@ -86,22 +83,18 @@ static void apply_style(int i)
     glutPostRedisplay();
 }
 
-// ─── Uniforms cel ─────────────────────────────────────────────────────────
 GLint ul_model_cel;
 GLint ul_mv_cel, ul_proj_cel, ul_light, ul_lightcol, ul_eye;
 GLint ul_bands, ul_ambient, ul_spec_thr, ul_spec_str;
 GLint ul_use_tex, ul_obj_color, ul_use_hatch;
-GLint ul_uv_scale; // ← global correct
+GLint ul_uv_scale;
 
-// Uniforms post-process
 GLint ul_post_texel, ul_post_color, ul_post_depth_thr, ul_post_normal_thr, ul_post_thickness;
 GLint ul_post_color_far, ul_post_thickness_far, ul_post_dist_near, ul_post_dist_far;
 GLint ul_post_bg_top, ul_post_bg_bottom;
 
-// Uniforms ombre
 GLint ul_shadow_mvp, ul_shadow_color, ul_shadow_gnormal;
 
-// ─── helper ───────────────────────────────────────────────────────────────
 static std::string read_file(const std::string &path)
 {
     std::ifstream f(path);
@@ -115,7 +108,6 @@ static std::string read_file(const std::string &path)
     return ss.str();
 }
 
-// ─── init ─────────────────────────────────────────────────────────────────
 bool initglut(int &argc, char *argv[])
 {
     glutInit(&argc, argv);
@@ -177,7 +169,6 @@ bool initshaders()
         return false;
     }
 
-    // ── Uniforms cel ──
     prog_cel->use();
     ul_model_cel = glGetUniformLocation(prog_cel->id(), "model");
     ul_mv_cel = glGetUniformLocation(prog_cel->id(), "model_view");
@@ -192,11 +183,10 @@ bool initshaders()
     ul_use_tex = glGetUniformLocation(prog_cel->id(), "use_texture");
     ul_obj_color = glGetUniformLocation(prog_cel->id(), "object_color");
     ul_use_hatch = glGetUniformLocation(prog_cel->id(), "use_hatch");
-    ul_uv_scale = glGetUniformLocation(prog_cel->id(), "uv_scale"); // ← correct
+    ul_uv_scale = glGetUniformLocation(prog_cel->id(), "uv_scale");
     glUniform1i(glGetUniformLocation(prog_cel->id(), "tex_diffuse"), 0);
-    glUniform1f(ul_uv_scale, 1.0f); // ← après prog_cel->use()
+    glUniform1f(ul_uv_scale, 1.0f);
 
-    // ── Uniforms post-process ──
     prog_post->use();
     glUniform1i(glGetUniformLocation(prog_post->id(), "u_color"), 0);
     glUniform1i(glGetUniformLocation(prog_post->id(), "u_normal"), 1);
@@ -213,7 +203,6 @@ bool initshaders()
     ul_post_bg_top = glGetUniformLocation(prog_post->id(), "u_bg_top");
     ul_post_bg_bottom = glGetUniformLocation(prog_post->id(), "u_bg_bottom");
 
-    // ── Uniforms ombre ──
     prog_shadow->use();
     ul_shadow_mvp = glGetUniformLocation(prog_shadow->id(), "mvp");
     ul_shadow_color = glGetUniformLocation(prog_shadow->id(), "shadow_color");
@@ -223,7 +212,6 @@ bool initshaders()
     return true;
 }
 
-// ─── FBO ──────────────────────────────────────────────────────────────────
 void init_fbo(int w, int h)
 {
     if (g_fbo == 0)
@@ -256,7 +244,7 @@ void init_fbo(int w, int h)
 
 void initobjects()
 {
-    ground = Mesh::make_plane(50.0f, GROUND_Y); // sol agrandi
+    ground = Mesh::make_plane(50.0f, GROUND_Y);
     ground->upload();
 
     tex_water = Texture::load("assets/eau_windwaker.png");
@@ -297,7 +285,6 @@ void timer(int)
     glutTimerFunc(16, timer, 0);
 }
 
-// ─── draw helpers ─────────────────────────────────────────────────────────
 static void draw_cel(Mesh *mesh, const mygl::matrix4 &model)
 {
     mygl::matrix4 mv = cam.get_view() * model;
@@ -329,13 +316,11 @@ static void draw_boat(const mygl::matrix4 &model)
     boat->draw_textured(ul_use_tex);
 }
 
-// ─── display ──────────────────────────────────────────────────────────────
 void display()
 {
     mygl::vec3 eye = cam.get_eye();
     const Style &s = g_styles[g_style];
 
-    // ── PASSE 1 : scène → FBO ──
     glBindFramebuffer(GL_FRAMEBUFFER, g_fbo);
     glViewport(0, 0, g_win_w, g_win_h);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
@@ -344,10 +329,9 @@ void display()
     glCullFace(GL_BACK);
     prog_cel->use();
 
-    // ── Cycle jour/nuit (porté du binaire désert) : le soleil tourne ──
     auto lerp = [](float a, float b, float t){ return a + (b - a) * t; };
     const float DAYLEN = 120.0f;
-    float theta = g_time * (6.2831853f / DAYLEN) + 1.3f;   // démarre de jour
+    float theta = g_time * (6.2831853f / DAYLEN) + 1.3f;
     mygl::vec3 light = mygl::vec3(std::cos(theta), std::sin(theta), 0.35f).normalize();
     float dayf = std::sin(theta) * 1.6f + 0.30f; dayf = dayf < 0 ? 0 : (dayf > 1 ? 1 : dayf);
     float lcr = lerp(0.30f,1.00f,dayf), lcg = lerp(0.36f,0.97f,dayf), lcb = lerp(0.55f,0.90f,dayf);
@@ -363,7 +347,6 @@ void display()
     glUniform1f(ul_spec_str, s.spec_str);
     glUniform1i(ul_use_hatch, g_hatch ? 1 : 0);
 
-    // ── Sol avec texture eau ──
     if (tex_water && tex_water->valid())
     {
         glUniform1i(ul_use_tex, 1);
@@ -374,17 +357,15 @@ void display()
     {
         glUniform1i(ul_use_tex, 0);
         glUniform1f(ul_uv_scale, 1.0f);
-        glUniform4f(ul_obj_color, 0.05f, 0.45f, 0.75f, 1.0f); // bleu fallback
+        glUniform4f(ul_obj_color, 0.05f, 0.45f, 0.75f, 1.0f);
     }
     draw_cel(ground, mygl::matrix4::identity());
 
-    // Nettoie la texture du sol avant Link/bateau
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, 0);
     glUniform1i(ul_use_tex, 0);
     glUniform1f(ul_uv_scale, 1.0f);
 
-    // ── Ombres ──
     mygl::matrix4 view = cam.get_view();
     mygl::matrix4 shadowMat = mygl::matrix4::shadow(0, 1, 0, -GROUND_Y, light, 0.0f);
     mygl::matrix4 vp = g_projection * view;
@@ -397,14 +378,12 @@ void display()
     glPolygonOffset(-1.0f, -1.0f);
     glDisable(GL_POLYGON_OFFSET_FILL);
 
-    // ── Link et bateau (avec leurs textures) ──
     prog_cel->use();
     mygl::matrix4 model_link = mygl::matrix4::translate(g_link_x, g_boat_y + g_link_y, g_link_z) * mygl::matrix4::scale(g_link_scale, g_link_scale, g_link_scale);
     mygl::matrix4 model_boat = mygl::matrix4::translate(0.0f, g_boat_y, 0.0f) * mygl::matrix4::scale(g_boat_scale, g_boat_scale, g_boat_scale);
     draw_link(model_link);
     draw_boat(model_boat);
 
-    // ── PASSE 2 : contour post-process → écran ──
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
     glViewport(0, 0, g_win_w, g_win_h);
     glDisable(GL_DEPTH_TEST);
@@ -426,7 +405,7 @@ void display()
     glUniform3fv(ul_post_color_far, 1, s.outline_far);
     glUniform1f(ul_post_thickness, s.thickness);
     glUniform1f(ul_post_thickness_far, s.thickness_far);
-    glUniform3f(ul_post_bg_top, skT_r, skT_g, skT_b);       // ciel jour/nuit
+    glUniform3f(ul_post_bg_top, skT_r, skT_g, skT_b);
     glUniform3f(ul_post_bg_bottom, skB_r, skB_g, skB_b);
 
     glBindVertexArray(g_quad_vao);
@@ -445,7 +424,6 @@ void reshape(int w, int h)
     init_fbo(w, h);
 }
 
-// ─── clavier ──────────────────────────────────────────────────────────────
 void keyboard(unsigned char k, int, int)
 {
     switch (k)
@@ -543,7 +521,6 @@ void keyboard(unsigned char k, int, int)
     }
 }
 
-// ─── main ─────────────────────────────────────────────────────────────────
 int main(int argc, char *argv[])
 {
     if (!initglut(argc, argv))
@@ -574,8 +551,8 @@ int main(int argc, char *argv[])
         std::cout << "  " << (i + 1) << "=" << g_styles[i].name;
     std::cout << "\n";
 
-    apply_style(2);                 // style 3 par défaut pour zelda
-    cam.angle_h += 1.5708f;         // caméra tournée de 90° vers la droite
+    apply_style(2);
+    cam.angle_h += 1.5708f + 3.14159f;
 
     glutMainLoop();
 }

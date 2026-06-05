@@ -1,14 +1,10 @@
-// Chargement de modèles externes (OBJ / glTF / DAE…) via Assimp.
-// SÉPARÉ de mesh.cpp pour que seul le binaire `zelda` dépende d'Assimp : le binaire
-// désert (`cartoon`) ne lie pas ce fichier ni `-lassimp`.
+
 #include "mesh.hh"
 #include <cstdio>
 #include <assimp/Importer.hpp>
 #include <assimp/scene.h>
 #include <assimp/postprocess.h>
 
-// Parcourt récursivement la hiérarchie Assimp et remplit `m` via l'API publique
-// push_vertex / push_submesh (aucun accès aux membres privés requis).
 static void process_node(aiNode* node, const aiScene* scene,
                          Mesh* m, aiMatrix4x4 parent_transform,
                          const std::string& dir) {
@@ -61,7 +57,7 @@ Mesh* Mesh::load_from_file(const std::string& path) {
         return nullptr;
     }
     std::string dir = path.substr(0, path.find_last_of("/\\") + 1);
-    Mesh* m = new Mesh();            // ctor privé OK : fonction membre static
+    Mesh* m = new Mesh();
     aiMatrix4x4 identity;
     process_node(scene->mRootNode, scene, m, identity, dir);
     std::printf("Loaded %s : %d verts\n", path.c_str(), m->vertex_count());
