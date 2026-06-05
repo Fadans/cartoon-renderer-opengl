@@ -263,6 +263,40 @@ Mesh* Mesh::make_rock(int rings, int sectors, float radius, float jitter, float 
     return m;
 }
 
+// ─── butte (rocher facetté tronqué : sommet & base plats) ────────────────────
+Mesh* Mesh::make_butte(int rings, int sectors, float radius, float height, float jitter, float seed) {
+    Mesh* m = new Mesh();
+    float hy = height * 0.5f;
+    auto dir = [](float phi, float th) -> std::array<float,3> {
+        return { std::sin(phi)*std::cos(th), std::cos(phi), std::sin(phi)*std::sin(th) };
+    };
+    // Point : rayon horizontal bruité (flancs rocheux) ; Y étiré puis CLAMPÉ → plat haut/bas.
+    auto pt = [&](std::array<float,3> u) -> std::array<float,3> {
+        float fr = 1.0f + jitter * rock_noise(u[0],u[1],u[2], seed);
+        if (fr < 0.35f) fr = 0.35f;                   // garde un rayon positif même à fort jitter
+        float rr = radius * fr;
+        float y  = u[1] * hy * 3.0f;                  // étire très fort → grand plateau plat (troncature +++)
+        y = y < -hy ? -hy : (y > hy ? hy : y);
+        return { u[0]*rr, y, u[2]*rr };
+    };
+    auto tri = [&](std::array<float,3> a, std::array<float,3> b, std::array<float,3> c) {
+        float ux=b[0]-a[0],uy=b[1]-a[1],uz=b[2]-a[2], vx=c[0]-a[0],vy=c[1]-a[1],vz=c[2]-a[2];
+        float nx=uy*vz-uz*vy, ny=uz*vx-ux*vz, nz=ux*vy-uy*vx;
+        float l=std::sqrt(nx*nx+ny*ny+nz*nz); if (l>1e-6f){ nx/=l; ny/=l; nz/=l; }
+        auto P=[&](std::array<float,3> p){ push3(m->positions,p[0],p[1],p[2]); push3(m->normals,nx,ny,nz); push2(m->uvs,0,0); };
+        P(a); P(b); P(c);
+    };
+    for (int r = 0; r < rings; r++) {
+        float phi0=PI*r/rings, phi1=PI*(r+1)/rings;
+        for (int s = 0; s < sectors; s++) {
+            float th0=2*PI*s/sectors, th1=2*PI*(s+1)/sectors;
+            auto A=pt(dir(phi0,th0)), B=pt(dir(phi1,th0)), C=pt(dir(phi1,th1)), D=pt(dir(phi0,th1));
+            tri(A,D,C); tri(A,C,B);
+        }
+    }
+    return m;
+}
+
 // ─── mesa / falaise (prisme érodé, sommet plat) ──────────────────────────────
 Mesh* Mesh::make_mesa(int sides, float radius, float height, float jitter, float seed) {
     Mesh* m = new Mesh();
@@ -290,6 +324,26 @@ Mesh* Mesh::make_mesa(int sides, float radius, float height, float jitter, float
         tri(x0,-hy,z0,  x1,hy,z1,  x1,-hy,z1);
         // Sommet plat (normale +Y) : centre, haut1, haut0 (CCW vu de dessus)
         tri(0,hy,0,  x1,hy,z1,  x0,hy,z0);
+    }
+    return m;
+}
+
+// ─── touffe d'herbe (brins fins, double face) ────────────────────────────────
+Mesh* Mesh::make_grass(int blades, float height, float spread, float seed) {
+    Mesh* m = new Mesh();
+    auto rnd=[&](float k){ float v=std::sin(seed*12.99f + k*78.23f)*43758.5f; return v-std::floor(v); };
+    for(int i=0;i<blades;i++){
+        float ang  = rnd(i*1.0f)*2*PI;
+        float lean = 0.15f + rnd(i*1.7f)*0.45f;            // inclinaison du brin
+        float h    = height*(0.6f + 0.6f*rnd(i*2.3f));
+        float rad  = spread*rnd(i*3.1f);
+        float bx=std::cos(ang)*rad, bz=std::sin(ang)*rad;  // base décalée du centre
+        float w=0.035f;                                    // demi-largeur à la base
+        float tx=std::cos(ang+1.5708f)*w, tz=std::sin(ang+1.5708f)*w;
+        float px=bx+std::cos(ang)*lean*h, pz=bz+std::sin(ang)*lean*h; // pointe (penchée)
+        auto V=[&](float x,float y,float z){ push3(m->positions,x,y,z); push3(m->normals,0,1,0); push2(m->uvs,0,0); };
+        V(bx-tx,0,bz-tz); V(bx+tx,0,bz+tz); V(px,h,pz);    // face avant
+        V(bx+tx,0,bz+tz); V(bx-tx,0,bz-tz); V(px,h,pz);    // face arrière (double face)
     }
     return m;
 }

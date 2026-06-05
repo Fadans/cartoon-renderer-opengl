@@ -24,14 +24,13 @@ program* prog_cel    = nullptr;
 program* prog_post   = nullptr;  // passe de contour post-process
 program* prog_shadow = nullptr;  // ombre projetée planaire
 
-// Scène désertique (falaises + rochers) — voir initobjects()
-Mesh*    ground  = nullptr;  // sol désertique
-Mesh*    mesa_a  = nullptr;  // falaises / buttes (prismes érodés)
-Mesh*    mesa_b  = nullptr;
-Mesh*    mesa_c  = nullptr;
-Mesh*    rock_a  = nullptr;  // rochers facettés (bruit + normales plates)
-Mesh*    rock_b  = nullptr;
-Mesh*    rock_c  = nullptr;
+// Scène désertique « Lucky Luke » (buttes + cactus + herbe) — voir initobjects()
+Mesh*    ground   = nullptr;  // sol désertique
+Mesh*    butte_a  = nullptr;  // buttes XXL (rochers tronqués, flancs rocheux)
+Mesh*    butte_b  = nullptr;  // spire haute
+Mesh*    grass    = nullptr;  // touffe d'herbe
+Mesh*    rock_a   = nullptr;  // cailloux facettés
+Mesh*    rock_b   = nullptr;
 
 Camera   cam;
 
@@ -44,10 +43,11 @@ GLuint g_quad_vao   = 0;  // VAO vide pour le triangle plein écran
 int    g_win_w      = 1024;
 int    g_win_h      = 1024;
 
-// Sol désertique (sable rougeâtre, façon mesa de l'Ouest)
-const float COL_GROUND[3] = { 0.76f, 0.52f, 0.34f };
+// Sol désertique (sable clair façon Lucky Luke — les buttes apportent le rouge)
+const float COL_GROUND[3] = { 0.86f, 0.76f, 0.56f };
 
-const float GROUND_Y = -1.3f;   // hauteur du sol (plan de l'ombre)
+const float GROUND_Y    = -1.3f;   // hauteur du sol (plan de l'ombre)
+const float GROUND_HALF = 65.0f;   // demi-côté du sol (= clip des ombres)
 
 mygl::matrix4 g_projection;
 
@@ -78,7 +78,7 @@ const Style g_styles[] = {
     //  nom              bands hatch  amb   sthr  sstr   outline(près)      outline(loin)       th   far    bg_top              bg_bottom
     { "BD cartoon",      4.f,  true,  .15f, .55f, .70f, {0,0,0},           {.22f,.28f,.40f},   5.f, .35f, {.52f,.70f,.92f},   {.93f,.91f,.82f} },
     { "Croquis encre",   3.f,  true,  .28f, .70f, .00f, {.10f,.07f,.05f},  {.40f,.34f,.28f},   4.f, .45f, {.90f,.86f,.76f},   {.80f,.74f,.62f} },
-    { "Pop comics",      5.f,  false, .22f, .50f, .95f, {0,0,0},           {0,0,0},            7.f, .60f, {.25f,.62f,.96f},   {.99f,.85f,.38f} },
+    { "Pop comics",      5.f,  false, .22f, .50f, .00f, {0,0,0},           {0,0,0},            7.f, .60f, {.25f,.62f,.96f},   {.99f,.85f,.38f} },
     { "Phong (compar.)", 64.f, false, .12f, .40f, .85f, {0,0,0},           {0,0,0},            0.f, 1.0f, {.80f,.82f,.86f},   {.60f,.62f,.66f} },
 };
 const int g_style_count = sizeof(g_styles) / sizeof(g_styles[0]);
@@ -106,7 +106,7 @@ GLint ul_post_color_far, ul_post_thickness_far, ul_post_dist_near, ul_post_dist_
 GLint ul_post_bg_top, ul_post_bg_bottom;
 
 // Uniforms ombre projetée
-GLint ul_shadow_mvp, ul_shadow_color, ul_shadow_gnormal;
+GLint ul_shadow_mvp, ul_shadow_world, ul_shadow_color, ul_shadow_gnormal, ul_shadow_half;
 
 // ─── helper lire fichier ──────────────────────────────────────────────────
 static std::string read_file(const std::string& path) {
@@ -196,8 +196,10 @@ bool initshaders() {
 
     prog_shadow->use();
     ul_shadow_mvp     = glGetUniformLocation(prog_shadow->id(), "mvp");
+    ul_shadow_world   = glGetUniformLocation(prog_shadow->id(), "world");
     ul_shadow_color   = glGetUniformLocation(prog_shadow->id(), "shadow_color");
     ul_shadow_gnormal = glGetUniformLocation(prog_shadow->id(), "ground_view_normal");
+    ul_shadow_half    = glGetUniformLocation(prog_shadow->id(), "ground_half");
 
     std::cout << "Shaders OK\n";
     return true;
@@ -234,20 +236,19 @@ void init_fbo(int w, int h) {
 }
 
 void initobjects() {
-    ground = Mesh::make_plane(14.0f, GROUND_Y);          // grand sol (ombres + horizon)
-    mesa_a = Mesh::make_mesa(7, 3.0f, 4.5f, 0.25f,  2.0f);// grande falaise
-    mesa_b = Mesh::make_mesa(6, 2.0f, 3.2f, 0.30f,  9.0f);// butte
-    mesa_c = Mesh::make_mesa(8, 1.4f, 2.4f, 0.22f, 17.0f);// petite butte
-    rock_a = Mesh::make_rock(6, 8, 1.00f, 0.40f,  3.0f); // rochers facettés (seeds variés)
-    rock_b = Mesh::make_rock(5, 7, 0.60f, 0.48f, 11.0f);
-    rock_c = Mesh::make_rock(6, 9, 1.50f, 0.35f, 23.0f);
-    for (Mesh* m : { ground, mesa_a, mesa_b, mesa_c, rock_a, rock_b, rock_c })
+    ground   = Mesh::make_plane(GROUND_HALF, GROUND_Y);   // grand sol (ombres + horizon)
+    butte_a  = Mesh::make_butte(9, 13, 26.0f, 18.0f, 1.30f,  2.0f);// mesa XXL (×4 large, ×2 haut, jitter ×3)
+    butte_b  = Mesh::make_butte(9, 13, 20.0f, 22.0f, 1.25f,  5.0f);// grande tour
+    grass    = Mesh::make_grass(14, 0.5f, 0.18f, 4.0f);
+    rock_a   = Mesh::make_rock(6, 8, 1.00f, 0.40f,  3.0f);
+    rock_b   = Mesh::make_rock(5, 7, 0.55f, 0.48f, 11.0f);
+    for (Mesh* m : { ground, butte_a, butte_b, grass, rock_a, rock_b })
         m->upload();
-    std::cout << "Scene desert prete (7 meshes)\n";
+    std::cout << "Scene desert prete\n";
 }
 
 void initPOV() {
-    g_projection = mygl::frustum(-0.5f, 0.5f, -0.5f, 0.5f, 1.0f, 100.0f);
+    g_projection = mygl::frustum(-0.5f, 0.5f, -0.5f, 0.5f, 1.0f, 150.0f);
 }
 
 // ─── timer d'animation ────────────────────────────────────────────────────
@@ -268,9 +269,11 @@ static void draw_cel(Mesh* mesh, const mygl::matrix4& model) {
     mesh->draw();
 }
 
-// Dessine l'ombre aplatie d'un mesh (mvp = projection·view·shadow·model)
-static void draw_shadow(Mesh* mesh, const mygl::matrix4& mvp) {
-    glUniformMatrix4fv(ul_shadow_mvp, 1, GL_FALSE, mvp.data());
+// Dessine l'ombre aplatie d'un mesh. mvp = projection·view·world ; world = shadow·model
+// (sert au shader à récupérer la position monde et à clipper l'ombre au terrain).
+static void draw_shadow(Mesh* mesh, const mygl::matrix4& mvp, const mygl::matrix4& world) {
+    glUniformMatrix4fv(ul_shadow_mvp,   1, GL_FALSE, mvp.data());
+    glUniformMatrix4fv(ul_shadow_world, 1, GL_FALSE, world.data());
     mesh->draw();
 }
 
@@ -280,32 +283,22 @@ void display() {
     const Style& s   = g_styles[g_style];   // preset de style courant
 
     // ── Cycle jour/nuit (le soleil EST l'animation) ────────────────────────
-    // Le soleil décrit un cercle (période DAYLEN). Sa hauteur `elev` pilote la
-    // direction de lumière, sa couleur (orangé à l'horizon), l'ambiante, le ciel
-    // et la force des ombres. La nuit, une « lune » douce prend le relais.
-    auto sstep = [](float a, float b, float x){ float t=(x-a)/(b-a); t=t<0?0:(t>1?1:t); return t*t*(3.0f-2.0f*t); };
-    auto lerp  = [](float a, float b, float t){ return a + (b-a)*t; };
-    const float DAYLEN = 120.0f;                       // un cycle ≈ 2 min (× g_timescale)
+    // Le soleil tourne (période DAYLEN). Sa hauteur `elev` fait passer la scène
+    // du jour (ciel bleu, lumière forte) à la nuit (ciel sombre, lumière faible).
+    auto lerp = [](float a, float b, float t){ return a + (b-a)*t; };
+    const float DAYLEN = 120.0f;                          // un cycle ≈ 2 min (× g_timescale)
     float theta = g_time * (6.2831853f / DAYLEN) + 1.3f;  // +1.3 rad → démarre en plein jour
-    float elev  = std::sin(theta);                     // hauteur du soleil [-1,1]
-    mygl::vec3 sun  = mygl::vec3(std::cos(theta), std::sin(theta), 0.35f).normalize();
-    mygl::vec3 moon = mygl::vec3(-0.30f, 0.70f, -0.35f).normalize();
-    float dayf = sstep(-0.10f, 0.25f, elev);           // 0 = nuit, 1 = plein jour
-    float glow = (1.0f - sstep(0.0f, 0.30f, elev)) * sstep(-0.06f, 0.06f, elev); // lueur d'horizon
+    float elev  = std::sin(theta);                        // hauteur du soleil [-1,1]
+    mygl::vec3 light = mygl::vec3(std::cos(theta), std::sin(theta), 0.35f).normalize();
+    float dayf = elev*1.6f + 0.30f;                       // 0 = nuit, 1 = jour
+    dayf = dayf<0.0f ? 0.0f : (dayf>1.0f ? 1.0f : dayf);
 
-    mygl::vec3 light = mygl::vec3(lerp(moon.x,sun.x,dayf), lerp(moon.y,sun.y,dayf),
-                                  lerp(moon.z,sun.z,dayf)).normalize();
-    // Couleur de lumière : nuit bleutée → jour blanc chaud, teintée d'orange à l'horizon
-    float lcr = lerp(lerp(0.38f,1.00f,dayf), 1.00f, glow);
-    float lcg = lerp(lerp(0.46f,0.97f,dayf), 0.55f, glow);
-    float lcb = lerp(lerp(0.78f,0.90f,dayf), 0.28f, glow);
-    float ambient_dn = lerp(0.06f, 0.17f, dayf);
-    // Ciel : nuit profonde → jour, bas teinté d'orange au couchant
-    float skT_r=lerp(0.04f,0.40f,dayf), skT_g=lerp(0.06f,0.62f,dayf), skT_b=lerp(0.14f,0.92f,dayf);
-    float skB_r=lerp(lerp(0.10f,0.86f,dayf),0.98f,glow),
-          skB_g=lerp(lerp(0.12f,0.82f,dayf),0.52f,glow),
-          skB_b=lerp(lerp(0.22f,0.70f,dayf),0.28f,glow);
-    float shadow_strength = sstep(0.12f, 0.45f, elev);  // ombres qui s'effacent quand le soleil descend
+    // Lumière : nuit bleutée faible → jour blanc chaud ; ambiante plus basse la nuit
+    float lcr = lerp(0.30f, 1.00f, dayf), lcg = lerp(0.36f, 0.97f, dayf), lcb = lerp(0.55f, 0.90f, dayf);
+    float ambient_dn = lerp(0.05f, 0.17f, dayf);
+    // Ciel : nuit profonde → jour (simple dégradé interpolé)
+    float skT_r=lerp(0.05f,0.40f,dayf), skT_g=lerp(0.07f,0.62f,dayf), skT_b=lerp(0.16f,0.92f,dayf);
+    float skB_r=lerp(0.10f,0.86f,dayf), skB_g=lerp(0.12f,0.82f,dayf), skB_b=lerp(0.22f,0.70f,dayf);
 
     // ── Composition de la scène désertique (falaises + rochers) ────────────
     // Instance = mesh + matrice model (posée/enterrée au sol y=GROUND_Y) + couleur.
@@ -314,16 +307,20 @@ void display() {
     struct Inst { Mesh* mesh; M model; float col[3]; };
 
     std::vector<Inst> scene = {
-        // Falaises / buttes au fond (silhouettées sur le ciel)
-        { mesa_a, M::translate(-7.0f, G+2.05f, -9.5f)  * M::rotate_y(0.3f), {0.70f,0.45f,0.30f} },
-        { mesa_c, M::translate( 0.6f, G+1.10f,-10.8f)  * M::rotate_y(0.7f), {0.74f,0.48f,0.32f} },
-        { mesa_b, M::translate( 6.5f, G+1.50f, -8.0f)  * M::rotate_y(1.1f), {0.66f,0.42f,0.28f} },
-        { mesa_b, M::translate( 9.5f, G+1.50f, -3.2f)  * M::rotate_y(2.0f), {0.64f,0.40f,0.27f} },
-        // Rochers (boulders) dispersés au premier plan
-        { rock_c, M::translate(-3.6f, G+0.75f, -2.6f)  * M::rotate_y(0.4f), {0.55f,0.42f,0.32f} },
-        { rock_a, M::translate( 2.6f, G+0.55f,  0.6f)  * M::rotate_y(0.8f), {0.58f,0.45f,0.34f} },
-        { rock_b, M::translate(-1.0f, G+0.32f,  1.8f)  * M::rotate_y(2.1f), {0.60f,0.47f,0.36f} },
-        { rock_a, M::translate( 0.9f, G+0.50f, -1.4f)  * M::rotate_y(1.5f), {0.52f,0.40f,0.30f} },
+        // ── Buttes géantes (rochers tronqués) au fond, silhouettées sur le ciel ──
+        { butte_b, M::translate(-38.0f, G+10.9f, -48.0f) * M::rotate_y(0.5f), {0.80f,0.41f,0.27f} },
+        { butte_a, M::translate( -6.0f, G+ 8.9f, -58.0f) * M::rotate_y(0.8f), {0.82f,0.44f,0.30f} },
+        // ── Touffes d'herbe ──
+        { grass, M::translate(-1.5f, G,  1.5f), {0.46f,0.60f,0.30f} },
+        { grass, M::translate( 1.2f, G,  2.2f), {0.44f,0.58f,0.29f} },
+        { grass, M::translate( 3.5f, G, -1.0f), {0.47f,0.61f,0.31f} },
+        { grass, M::translate(-4.0f, G, -0.5f), {0.45f,0.59f,0.30f} },
+        { grass, M::translate( 0.0f, G, -2.5f), {0.46f,0.60f,0.30f} },
+        { grass, M::translate(-2.5f, G,  3.0f), {0.44f,0.58f,0.29f} },
+        // ── Cailloux ──
+        { rock_b, M::translate( 1.8f, G+0.22f,  1.0f) * M::rotate_y(1.0f),                       {0.64f,0.52f,0.40f} },
+        { rock_b, M::translate(-3.2f, G+0.18f,  2.2f) * M::rotate_y(2.5f) * M::scale(0.8f,0.8f,0.8f), {0.62f,0.50f,0.39f} },
+        { rock_a, M::translate( 4.0f, G+0.40f, -1.8f) * M::rotate_y(0.7f) * M::scale(0.7f,0.6f,0.7f),  {0.66f,0.54f,0.42f} },
     };
 
     // ── PASSE 1 : SCÈNE CEL-SHADÉE → FBO (couleur + normales + profondeur) ──
@@ -362,20 +359,25 @@ void display() {
     mygl::matrix4 vp        = g_projection * view;
     const GLfloat* vd = view.data();  // colonne 1 du 3×3 = normale +Y en espace caméra
 
-    // Couleur d'ombre = sol → sombre selon la hauteur du soleil : à l'aube/crépuscule
-    // l'ombre se fond dans le sol (shadow_strength→0), évitant aussi les ombres
-    // démesurées du soleil rasant. La nuit (soleil sous l'horizon) : pas d'ombre.
+    // Ombres dessinées seulement quand le soleil est assez haut : sous l'horizon, la
+    // projection planaire s'inverserait (ombres qui partent à l'envers) → on coupe.
     prog_shadow->use();
-    float sh_r = lerp(COL_GROUND[0], 0.16f, shadow_strength);
-    float sh_g = lerp(COL_GROUND[1], 0.12f, shadow_strength);
-    float sh_b = lerp(COL_GROUND[2], 0.10f, shadow_strength);
-    glUniform3f(ul_shadow_color,   sh_r, sh_g, sh_b);
+    // Couleur d'ombre = sol ÉCLAIRÉ assombri (× 0.45). Comme elle dérive de la
+    // luminosité du sol (qui baisse la nuit), l'ombre reste toujours plus sombre
+    // que le sol, à toute heure (sinon, au crépuscule, l'ombre paraît plus claire).
+    float ground_lit = ambient_dn + (light.y > 0.0f ? light.y : 0.0f);  // sol = normale +Y
+    glUniform3f(ul_shadow_color, COL_GROUND[0]*ground_lit*lcr*0.45f,
+                                 COL_GROUND[1]*ground_lit*lcg*0.45f,
+                                 COL_GROUND[2]*ground_lit*lcb*0.45f);
     glUniform3f(ul_shadow_gnormal, vd[4], vd[5], vd[6]);
-    if (elev > 0.12f) {
+    glUniform1f(ul_shadow_half, GROUND_HALF);   // clip de l'ombre aux bornes du terrain
+    if (elev > 0.15f) {
         glEnable(GL_POLYGON_OFFSET_FILL);
         glPolygonOffset(-1.0f, -1.0f);
-        for (const Inst& it : scene)
-            draw_shadow(it.mesh, vp * shadowMat * it.model);
+        for (const Inst& it : scene) {
+            mygl::matrix4 world = shadowMat * it.model;   // position aplatie en monde
+            draw_shadow(it.mesh, vp * world, world);
+        }
         glDisable(GL_POLYGON_OFFSET_FILL);
     }
 
@@ -468,6 +470,11 @@ int main(int argc, char* argv[]) {
     if (!initshaders())        return 1;
     initobjects();
     initPOV();
+
+    // Caméra reculée et basse : on regarde la plaine vers les buttes du fond
+    cam.distance = 18.0f;
+    cam.angle_v  = 0.12f;
+    cam.center   = { 0.0f, 1.0f, -8.0f };
 
     glGenVertexArrays(1, &g_quad_vao);  // VAO vide pour le triangle plein écran
     init_fbo(g_win_w, g_win_h);

@@ -30,7 +30,7 @@ uniform vec3  u_bg_bottom;        // couleur fond (bas)
 
 // near/far du frustum (main.cpp : frustum(..., 1.0, 100.0))
 const float NEAR = 1.0;
-const float FAR  = 100.0;
+const float FAR  = 150.0;   // doit matcher le far du frustum (main.cpp initPOV)
 
 in  vec2 frag_uv;
 layout(location = 0) out vec4 output_color;

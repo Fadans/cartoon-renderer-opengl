@@ -27,6 +27,11 @@ public:
     // Mesa / falaise : prisme à `sides` côtés, rayon érodé par colonne, sommet plat,
     // flancs à normale plate (look de butte désertique).
     static Mesh* make_mesa(int sides, float radius, float height, float jitter, float seed);
+    // Butte : rocher facetté XXL tronqué (Y clampé) → sommet & base plats, flancs
+    // rocheux bruités. `radius` = largeur, `height` = hauteur totale.
+    static Mesh* make_butte(int rings, int sectors, float radius, float height, float jitter, float seed);
+    // Touffe d'herbe : `blades` brins (triangles fins, double face) en éventail.
+    static Mesh* make_grass(int blades, float height, float spread, float seed);
     // Quad horizontal (normale +Y) centré en (0,y,0), demi-côté `half`
     static Mesh* make_plane(float half, float y = 0.0f);
 

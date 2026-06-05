@@ -1,10 +1,10 @@
 # Rendu Cartoon Temps Réel — POGL
 
 Rendu **cartoon (cel shading) temps réel** en OpenGL 4.5, avec contours, ombrage
-en hachures, ombres portées et styles commutables en direct. La scène de démonstration
-est une **« casse de Pandora »** (clin d'œil à *Borderlands*) : cuve, barils explosifs,
-caisses, pneu, cône et panneau tournant, posés sur un sol désertique — tout en aplats
-de couleur soulignés d'un gros trait d'encre.
+en hachures, ombres portées et styles commutables en direct. La scène est un **désert
+façon Lucky Luke** : deux **buttes géantes** (mesas à sommet plat, flancs rocheux),
+touffes d'herbe et cailloux sur un grand sol sableux, le tout sous un **cycle jour/nuit**
+(le soleil tourne) — en aplats de couleur soulignés d'un gros trait d'encre.
 
 > Projet de Programmation OpenGL (POGL). Sujet : « Rendu cartoon temps réel ».
 
@@ -34,6 +34,7 @@ make clean      # nettoyer les objets + binaire
 | + / − | nombre de bandes du cel shading |
 | H | hachures de croquis on/off |
 | 1 – 4 | presets de style (4 = Phong, pour la comparaison) |
+| T | vitesse du cycle jour/nuit (×1 → ×8 → ×30) |
 | P | pause animation · Échap | quitter |
 
 **Styles :** `1` BD cartoon · `2` Croquis encre · `3` Pop comics · `4` Phong (comparaison).
@@ -59,14 +60,16 @@ Techniques mises en œuvre (détail dans les `PHASE_*.md`) :
 - **Contour post-process** : détection de bords sur G-buffer (profondeur en dérivée
   seconde → robuste aux plans rasants ; normale → arêtes vives), trait à épaisseur et
   couleur variables selon la profondeur.
-- **Ombres** : projection planaire sur le sol (matrice d'ombre, `lw=0` = soleil).
+- **Cycle jour/nuit** : le soleil tourne (`light = dir(cosθ, sinθ, .35)`) ; sa hauteur
+  fait évoluer ciel, lumière, ambiante et ombres (= l'animation temps réel de la scène).
+- **Ombres** : projection planaire sur le sol (`lw=0`), **clippées aux bornes du terrain**
+  (`discard`), couleur dérivée du sol éclairé (suit le jour/nuit), coupées la nuit.
 - **Hachures** : trame de croquis en espace écran, densité ∝ obscurité.
 - **Presets de style** : table `Style` factorisant tout le « look », bascule clavier ;
   un preset Phong (64 bandes, sans contour ni hachures) sert de comparaison.
-- **Scène** : liste d'instances `{mesh, model, couleur}` composée à partir de meshes
-  procéduraux (cube/cône via `make_box`/`make_cone`, **rochers facettés** via `make_rock`
-  = sphère déformée par bruit à normales plates), posés au sol ; une boucle pour les
-  ombres, une pour le rendu cel. Un panneau se balance (animation temporelle).
+- **Géométrie procédurale** : buttes (`make_butte` = rocher bruité tronqué → mesa à
+  sommet plat), rochers (`make_rock`), herbe (`make_grass`), sol (`make_plane`). Scène =
+  liste d'instances `{mesh, model, couleur}` : une boucle pour les ombres, une pour le cel.
 
 ## Arborescence
 
@@ -76,7 +79,7 @@ Projet/
 ├── src/
 │   ├── main.cpp                 point d'entrée, boucle de rendu, presets, clavier
 │   ├── matrix4.{hh,cpp}         maths : lookat, frustum, translate/rotate/scale, shadow
-│   ├── mesh.{hh,cpp}            géométrie procédurale (sphère, cylindre, tore, cube, cône, rocher, sol)
+│   ├── mesh.{hh,cpp}            géométrie procédurale (butte, rocher, herbe, sol + primitives en réserve)
 │   ├── camera.{hh,cpp}          caméra orbitale + déplacement fly
 │   ├── program.{hh,cpp}         compilation/link des shaders
 │   └── texture.{hh,cpp}         loader de texture (dormant — voir Notes)
@@ -85,7 +88,7 @@ Projet/
 │   ├── shadow_{vertex,fragment}.glsl    ombres projetées planaires
 │   └── post_{vertex,fragment}.glsl      fond + contour (passe 2)
 ├── lib/  image*.{hh,cpp}        chargement TGA (TIFO) — utilisé par texture.* (dormant)
-└── *.md  CONTEXT, PHASES, PHASE_1..5  documentation détaillée par phase
+└── *.md  CONTEXT, PHASES, PHASE_1..6  documentation détaillée par phase
 ```
 
 ## Notes
