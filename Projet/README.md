@@ -96,7 +96,7 @@ Projet/
 │   └── texture.{hh,cpp}         chargement de texture PNG (stb_image)                      ┘
 ├── shaders/   cel / shadow / post (.glsl) — partagés par les 2 binaires
 ├── assets/    Toon Link (obj+mtl), red_lion (gltf) — modèles chargés par zelda
-├── lib/       stb_image.h (+ image*.{hh,cpp} TIFO, en réserve)
+├── lib/       stb_image.h (chargement PNG, en-tête tiers)
 └── *.md       CONTEXT, PHASES, PHASE_1..6, CODE  documentation
 ```
 

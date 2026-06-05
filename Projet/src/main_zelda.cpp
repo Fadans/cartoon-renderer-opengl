@@ -20,7 +20,6 @@
 
 program *prog_cel = nullptr;
 program *prog_post = nullptr;
-program *prog_shadow = nullptr;
 
 Mesh *link_body = nullptr;
 Mesh *ground = nullptr;
@@ -93,7 +92,6 @@ GLint ul_post_texel, ul_post_color, ul_post_depth_thr, ul_post_normal_thr, ul_po
 GLint ul_post_color_far, ul_post_thickness_far, ul_post_dist_near, ul_post_dist_far;
 GLint ul_post_bg_top, ul_post_bg_bottom;
 
-GLint ul_shadow_mvp, ul_shadow_color, ul_shadow_gnormal;
 
 static std::string read_file(const std::string &path)
 {
@@ -160,15 +158,6 @@ bool initshaders()
         std::cerr << "post shader failed\n";
         return false;
     }
-    prog_shadow = program::make_program(
-        read_file("shaders/shadow_vertex.glsl"),
-        read_file("shaders/shadow_fragment.glsl"));
-    if (!prog_shadow || !prog_shadow->is_ready())
-    {
-        std::cerr << "shadow shader failed\n";
-        return false;
-    }
-
     prog_cel->use();
     ul_model_cel = glGetUniformLocation(prog_cel->id(), "model");
     ul_mv_cel = glGetUniformLocation(prog_cel->id(), "model_view");
@@ -202,11 +191,6 @@ bool initshaders()
     ul_post_dist_far = glGetUniformLocation(prog_post->id(), "u_dist_far");
     ul_post_bg_top = glGetUniformLocation(prog_post->id(), "u_bg_top");
     ul_post_bg_bottom = glGetUniformLocation(prog_post->id(), "u_bg_bottom");
-
-    prog_shadow->use();
-    ul_shadow_mvp = glGetUniformLocation(prog_shadow->id(), "mvp");
-    ul_shadow_color = glGetUniformLocation(prog_shadow->id(), "shadow_color");
-    ul_shadow_gnormal = glGetUniformLocation(prog_shadow->id(), "ground_view_normal");
 
     std::cout << "Shaders OK\n";
     return true;
@@ -365,18 +349,6 @@ void display()
     glBindTexture(GL_TEXTURE_2D, 0);
     glUniform1i(ul_use_tex, 0);
     glUniform1f(ul_uv_scale, 1.0f);
-
-    mygl::matrix4 view = cam.get_view();
-    mygl::matrix4 shadowMat = mygl::matrix4::shadow(0, 1, 0, -GROUND_Y, light, 0.0f);
-    mygl::matrix4 vp = g_projection * view;
-    const GLfloat *vd = view.data();
-
-    prog_shadow->use();
-    glUniform3f(ul_shadow_color, 0.22f, 0.24f, 0.28f);
-    glUniform3f(ul_shadow_gnormal, vd[4], vd[5], vd[6]);
-    glEnable(GL_POLYGON_OFFSET_FILL);
-    glPolygonOffset(-1.0f, -1.0f);
-    glDisable(GL_POLYGON_OFFSET_FILL);
 
     prog_cel->use();
     mygl::matrix4 model_link = mygl::matrix4::translate(g_link_x, g_boat_y + g_link_y, g_link_z) * mygl::matrix4::scale(g_link_scale, g_link_scale, g_link_scale);

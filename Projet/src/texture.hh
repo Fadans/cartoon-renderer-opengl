@@ -6,10 +6,6 @@ public:
     ~Texture();
     static Texture* load(const char* path);
 
-    static Texture* checkerboard(int size, int cases_per_side,
-                                 GLubyte r1, GLubyte g1, GLubyte b1,
-                                 GLubyte r2, GLubyte g2, GLubyte b2);
-
     void bind(GLenum unit) const;
     bool valid() const { return id_ != 0; }
 private:

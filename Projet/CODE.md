@@ -50,7 +50,6 @@ point `center` déplaçable.
 ## `texture.hh / .cpp` — textures (via stb_image)
 
 - `Texture::load(path)` : charge une image (PNG…) avec **stb_image** en texture GL.
-- `Texture::checkerboard(...)` : génère un damier procédural (utilitaire).
 - `bind(unit)` : lie la texture à une unité (`GL_TEXTURE0`…). `valid()` : chargement réussi.
 
 ## `mesh.hh / .cpp` — géométrie
@@ -58,15 +57,14 @@ point `center` déplaçable.
 `class Mesh` = un VAO + 3 VBO (positions, normales, UV) + une liste de `SubMesh`
 (plages de sommets texturées, pour les modèles chargés).
 
-**Générateurs procéduraux** (renvoient un `Mesh*`) :
-- `make_sphere`, `make_cylinder` (avec caps), `make_torus`, `make_plane` : primitives de base.
-- `make_box(hx,hy,hz)` : cube, normales par face.
-- `make_cone(n,radius,height)` : cône (normale de flanc inclinée selon la pente).
-- `make_rock(...)` : rocher facetté = sphère basse résolution déformée par bruit, normales plates.
-- `make_butte(rings,sectors,radius,height,jitter,seed)` : **mesa** = rocher bruité dont le
+**Générateurs procéduraux** (renvoient un `Mesh*`) — uniquement ceux utilisés par la scène :
+- `make_plane(half, y)` : grand quad horizontal (le sol).
+- `make_rock(rings,sectors,radius,jitter,seed)` : rocher facetté = sphère basse résolution
+  déformée par un bruit, **normales plates** (aspect low-poly anguleux).
+- `make_butte(rings,sectors,radius,height,jitter,seed)` : **mesa** = un `make_rock` dont le
   Y est étiré puis clampé → sommet et base plats, flancs rocheux.
-- `make_mesa(...)` : variante prisme érodé (non utilisée par la scène actuelle).
 - `make_grass(blades,height,spread,seed)` : touffe de brins (triangles fins double face).
+- (Un sous-helper interne `rock_noise` fournit le bruit lisse pour rock et butte.)
 
 **Méthodes d'instance** :
 - `upload()` : envoie les VBO au GPU + charge la texture de chaque `SubMesh`.

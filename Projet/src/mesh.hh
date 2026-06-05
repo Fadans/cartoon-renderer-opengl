@@ -19,18 +19,7 @@ class Mesh {
 public:
     ~Mesh();
 
-    static Mesh* make_sphere(int rings, int sectors, float radius = 1.0f);
-
-    static Mesh* make_cylinder(int n, float radius = 0.5f, float height = 1.5f, bool with_caps = true);
-    static Mesh* make_torus(int rings, int sectors, float R = 0.6f, float r = 0.25f);
-
-    static Mesh* make_box(float hx, float hy, float hz);
-
-    static Mesh* make_cone(int n, float radius, float height);
-
     static Mesh* make_rock(int rings, int sectors, float radius, float jitter, float seed);
-
-    static Mesh* make_mesa(int sides, float radius, float height, float jitter, float seed);
 
     static Mesh* make_butte(int rings, int sectors, float radius, float height, float jitter, float seed);
 
