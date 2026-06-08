@@ -97,11 +97,12 @@ Projet/
 ├── shaders/   cel / shadow / post (.glsl) — partagés par les 2 binaires
 ├── assets/    Toon Link (obj+mtl), red_lion (gltf) — modèles chargés par zelda
 ├── lib/       stb_image.h (chargement PNG, en-tête tiers)
-└── *.md       CONTEXT, PHASES, PHASE_1..6, CODE  documentation
+└── *.md       GUIDE_COMPLET, CODE, CONTEXT, PHASES, PHASE_1..6, SOUTENANCE
 ```
 
-> Le code est volontairement **sans commentaires** — le rôle de chaque fichier et de
-> chaque fonction (et le détail du chargement **Assimp**) est documenté dans **`CODE.md`**.
+> **`GUIDE_COMPLET.md`** = explication de A à Z (notions de base → techniques → phases).
+> Le code est volontairement **sans commentaires** ; le rôle de chaque fichier/fonction
+> (et le détail **Assimp**) est dans **`CODE.md`**. Script oral → **`SOUTENANCE.md`**.
 
 ## Notes
 
