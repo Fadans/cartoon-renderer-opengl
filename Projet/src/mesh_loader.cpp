@@ -1,6 +1,7 @@
 
 #include "mesh.hh"
 #include <cstdio>
+#include <cmath>
 #include <assimp/Importer.hpp>
 #include <assimp/scene.h>
 #include <assimp/postprocess.h>
@@ -35,13 +36,20 @@ static void process_node(aiNode* node, const aiScene* scene,
         }
 
         std::string tex;
+        float cr = 0.7f, cg = 0.7f, cb = 0.7f;
         if (mesh->mMaterialIndex < scene->mNumMaterials) {
             aiMaterial* mat = scene->mMaterials[mesh->mMaterialIndex];
             aiString tex_name;
             if (mat->GetTexture(aiTextureType_DIFFUSE, 0, &tex_name) == AI_SUCCESS)
                 tex = dir + tex_name.C_Str();
+            aiColor3D col(0.7f, 0.7f, 0.7f);
+            if (mat->Get(AI_MATKEY_COLOR_DIFFUSE, col) == AI_SUCCESS) {
+                cr = std::pow(col.r, 1.0f / 2.2f);
+                cg = std::pow(col.g, 1.0f / 2.2f);
+                cb = std::pow(col.b, 1.0f / 2.2f);
+            }
         }
-        m->push_submesh(start, m->vertex_count() - start, tex);
+        m->push_submesh(start, m->vertex_count() - start, tex, cr, cg, cb);
     }
     for (unsigned int i = 0; i < node->mNumChildren; i++)
         process_node(node->mChildren[i], scene, m, transform, dir);

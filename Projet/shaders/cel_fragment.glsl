@@ -12,6 +12,8 @@ uniform float spec_strength;
 uniform bool  use_texture;
 uniform vec4  object_color;
 uniform bool  use_hatch;
+uniform float hatch_thr;
+uniform bool  two_sided;
 
 layout(location = 0) out vec4 output_color;
 layout(location = 1) out vec4 output_normal;
@@ -31,24 +33,27 @@ float hatching(float tone) {
     vec2 d1 = vec2(0.7071,  0.7071);
     vec2 d2 = vec2(0.7071, -0.7071);
     float h = 0.0;
-    if (tone < 0.80) h = max(h, hatch_layer(fc, d1, 9.0, 1.6));
-    if (tone < 0.55) h = max(h, hatch_layer(fc, d2, 9.0, 1.6));
-    if (tone < 0.30) h = max(h, hatch_layer(fc, d1, 4.5, 1.6));
-    if (tone < 0.15) h = max(h, hatch_layer(fc, d2, 4.5, 1.6));
+    if (tone < 0.80 * hatch_thr) h = max(h, hatch_layer(fc, d1, 9.0, 1.6));
+    if (tone < 0.55 * hatch_thr) h = max(h, hatch_layer(fc, d2, 9.0, 1.6));
+    if (tone < 0.30 * hatch_thr) h = max(h, hatch_layer(fc, d1, 4.5, 1.6));
+    if (tone < 0.15 * hatch_thr) h = max(h, hatch_layer(fc, d2, 4.5, 1.6));
     return h;
 }
 
 void main() {
     vec3 n = normalize(frag_normal);
-    vec3 l = normalize(light_dir);
     vec3 v = normalize(eye_position - frag_pos);
+    if (two_sided && dot(n, v) < 0.0)
+        n = -n;
+    vec3 l = normalize(light_dir);
     vec3 r = reflect(-l, n);
 
     float diff = max(dot(n, l), 0.0);
-    float cel  = floor(diff * num_bands) / num_bands;
+    bool  smooth_shade = num_bands >= 64.0;
+    float cel  = smooth_shade ? diff : floor(diff * num_bands) / num_bands;
 
     float spec_raw = pow(max(dot(r, v), 0.0), 32.0);
-    float spec     = step(spec_threshold, spec_raw) * spec_strength;
+    float spec     = (smooth_shade ? spec_raw : step(spec_threshold, spec_raw)) * spec_strength;
 
     spec *= step(0.0, dot(n, l));
 

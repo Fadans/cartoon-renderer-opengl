@@ -19,6 +19,83 @@ static void push2(std::vector<GLfloat>& v, float a, float b) {
     v.push_back(a); v.push_back(b);
 }
 
+Mesh* Mesh::make_sphere(int rings, int sectors, float radius) {
+    Mesh* m = new Mesh();
+    for (int r = 0; r < rings; r++) {
+        float phi0 = PI * r       / rings;
+        float phi1 = PI * (r + 1) / rings;
+        for (int s = 0; s < sectors; s++) {
+            float theta0 = 2*PI * s       / sectors;
+            float theta1 = 2*PI * (s + 1) / sectors;
+            float x00=std::sin(phi0)*std::cos(theta0), y00=std::cos(phi0), z00=std::sin(phi0)*std::sin(theta0);
+            float x10=std::sin(phi1)*std::cos(theta0), y10=std::cos(phi1), z10=std::sin(phi1)*std::sin(theta0);
+            float x11=std::sin(phi1)*std::cos(theta1), y11=std::cos(phi1), z11=std::sin(phi1)*std::sin(theta1);
+            float x01=std::sin(phi0)*std::cos(theta1), y01=std::cos(phi0), z01=std::sin(phi0)*std::sin(theta1);
+            float u0=(float)s/sectors, u1=(float)(s+1)/sectors;
+            float v0=(float)r/rings,   v1=(float)(r+1)/rings;
+            push3(m->positions, x00*radius, y00*radius, z00*radius); push3(m->normals, x00, y00, z00); push2(m->uvs, u0, v0);
+            push3(m->positions, x01*radius, y01*radius, z01*radius); push3(m->normals, x01, y01, z01); push2(m->uvs, u1, v0);
+            push3(m->positions, x11*radius, y11*radius, z11*radius); push3(m->normals, x11, y11, z11); push2(m->uvs, u1, v1);
+            push3(m->positions, x00*radius, y00*radius, z00*radius); push3(m->normals, x00, y00, z00); push2(m->uvs, u0, v0);
+            push3(m->positions, x11*radius, y11*radius, z11*radius); push3(m->normals, x11, y11, z11); push2(m->uvs, u1, v1);
+            push3(m->positions, x10*radius, y10*radius, z10*radius); push3(m->normals, x10, y10, z10); push2(m->uvs, u0, v1);
+        }
+    }
+    return m;
+}
+
+Mesh* Mesh::make_cylinder(int n, float radius, float height, bool with_caps) {
+    Mesh* m = new Mesh();
+    for (int i = 0; i < n; i++) {
+        float t0=2*PI*i/n, t1=2*PI*(i+1)/n;
+        float x0=radius*std::cos(t0), z0=radius*std::sin(t0);
+        float x1=radius*std::cos(t1), z1=radius*std::sin(t1);
+        float u0=(float)i/n, u1=(float)(i+1)/n;
+        push3(m->positions,x0,-height/2,z0); push3(m->normals,x0/radius,0,z0/radius); push2(m->uvs,u0,0);
+        push3(m->positions,x0, height/2,z0); push3(m->normals,x0/radius,0,z0/radius); push2(m->uvs,u0,1);
+        push3(m->positions,x1, height/2,z1); push3(m->normals,x1/radius,0,z1/radius); push2(m->uvs,u1,1);
+        push3(m->positions,x0,-height/2,z0); push3(m->normals,x0/radius,0,z0/radius); push2(m->uvs,u0,0);
+        push3(m->positions,x1, height/2,z1); push3(m->normals,x1/radius,0,z1/radius); push2(m->uvs,u1,1);
+        push3(m->positions,x1,-height/2,z1); push3(m->normals,x1/radius,0,z1/radius); push2(m->uvs,u1,0);
+        if (with_caps) {
+            float cu0=0.5f+0.5f*std::cos(t0), cv0=0.5f+0.5f*std::sin(t0);
+            float cu1=0.5f+0.5f*std::cos(t1), cv1=0.5f+0.5f*std::sin(t1);
+            push3(m->positions,0, height/2, 0); push3(m->normals,0,1,0); push2(m->uvs,.5f,.5f);
+            push3(m->positions,x1,height/2,z1); push3(m->normals,0,1,0); push2(m->uvs,cu1,cv1);
+            push3(m->positions,x0,height/2,z0); push3(m->normals,0,1,0); push2(m->uvs,cu0,cv0);
+            push3(m->positions,0,-height/2, 0); push3(m->normals,0,-1,0); push2(m->uvs,.5f,.5f);
+            push3(m->positions,x0,-height/2,z0); push3(m->normals,0,-1,0); push2(m->uvs,cu0,cv0);
+            push3(m->positions,x1,-height/2,z1); push3(m->normals,0,-1,0); push2(m->uvs,cu1,cv1);
+        }
+    }
+    return m;
+}
+
+Mesh* Mesh::make_torus(int rings, int sectors, float R, float r) {
+    Mesh* m = new Mesh();
+    for (int i = 0; i < rings; i++) {
+        float u0 = 2*PI * i / rings, u1 = 2*PI * (i + 1) / rings;
+        for (int j = 0; j < sectors; j++) {
+            float v0 = 2*PI * j / sectors, v1 = 2*PI * (j + 1) / sectors;
+            auto P = [&](float u, float v) -> std::array<float,3> {
+                return { (R + r*std::cos(v))*std::cos(u), r*std::sin(v), (R + r*std::cos(v))*std::sin(u) };
+            };
+            auto N = [](float u, float v) -> std::array<float,3> {
+                return { std::cos(v)*std::cos(u), std::sin(v), std::cos(v)*std::sin(u) };
+            };
+            auto emit = [&](float u, float v, float fu, float fv) {
+                auto p = P(u,v); auto n = N(u,v);
+                push3(m->positions, p[0], p[1], p[2]); push3(m->normals, n[0], n[1], n[2]); push2(m->uvs, fu, fv);
+            };
+            float fu0=(float)i/rings, fu1=(float)(i+1)/rings;
+            float fv0=(float)j/sectors, fv1=(float)(j+1)/sectors;
+            emit(u0,v0,fu0,fv0); emit(u0,v1,fu0,fv1); emit(u1,v1,fu1,fv1);
+            emit(u0,v0,fu0,fv0); emit(u1,v1,fu1,fv1); emit(u1,v0,fu1,fv0);
+        }
+    }
+    return m;
+}
+
 static float rock_noise(float x, float y, float z, float seed) {
     float n = std::sin(x*2.7f + seed*1.3f)
             + std::sin(y*3.1f + seed*2.1f)
@@ -161,20 +238,6 @@ void Mesh::draw() const {
     glBindVertexArray(0);
 }
 
-void Mesh::draw_textured(GLint ul_use_tex) const {
-    glBindVertexArray(vao_id);
-    for (const auto& sub : submeshes) {
-        if (sub.texture && sub.texture->valid()) {
-            glUniform1i(ul_use_tex, 1);
-            sub.texture->bind(GL_TEXTURE0);
-        } else {
-            glUniform1i(ul_use_tex, 0);
-        }
-        glDrawArrays(GL_TRIANGLES, sub.start_vertex, sub.vertex_count);
-    }
-    glBindVertexArray(0);
-}
-
 void Mesh::push_vertex(float px, float py, float pz,
                        float nx, float ny, float nz, float u, float v) {
     push3(positions, px, py, pz);
@@ -182,10 +245,38 @@ void Mesh::push_vertex(float px, float py, float pz,
     push2(uvs,       u,  v);
 }
 
-void Mesh::push_submesh(int start_vertex, int vertex_count, const std::string& tex_path) {
+void Mesh::push_submesh(int start_vertex, int vertex_count, const std::string& tex_path,
+                        float r, float g, float b) {
     SubMesh sub;
     sub.start_vertex = start_vertex;
     sub.vertex_count = vertex_count;
     sub.tex_path     = tex_path;
+    sub.color[0] = r; sub.color[1] = g; sub.color[2] = b;
     submeshes.push_back(sub);
+}
+
+void Mesh::draw_colored(GLint ul_use_tex, GLint ul_obj_color) const {
+    glBindVertexArray(vao_id);
+    for (const auto& sub : submeshes) {
+        if (sub.texture && sub.texture->valid()) {
+            glUniform1i(ul_use_tex, 1);
+            sub.texture->bind(GL_TEXTURE0);
+        } else {
+            glUniform1i(ul_use_tex, 0);
+            glUniform4f(ul_obj_color, sub.color[0], sub.color[1], sub.color[2], 1.0f);
+        }
+        glDrawArrays(GL_TRIANGLES, sub.start_vertex, sub.vertex_count);
+    }
+    glBindVertexArray(0);
+}
+
+void Mesh::bounds(float mn[3], float mx[3]) const {
+    if (positions.empty()) { mn[0]=mn[1]=mn[2]=0; mx[0]=mx[1]=mx[2]=0; return; }
+    mn[0]=mx[0]=positions[0]; mn[1]=mx[1]=positions[1]; mn[2]=mx[2]=positions[2];
+    for (size_t i = 0; i + 2 < positions.size(); i += 3)
+        for (int k = 0; k < 3; k++) {
+            float c = positions[i+k];
+            if (c < mn[k]) mn[k] = c;
+            if (c > mx[k]) mx[k] = c;
+        }
 }

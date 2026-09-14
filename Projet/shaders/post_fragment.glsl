@@ -47,7 +47,7 @@ void main() {
 
     float dl = read_depth(frag_uv - dx), dr = read_depth(frag_uv + dx);
     float dd = read_depth(frag_uv - dy), du = read_depth(frag_uv + dy);
-    float depth_edge = abs(dl + dr - 2.0 * dc) + abs(du + dd - 2.0 * dc);
+    float depth_edge = abs(dr - dl) + abs(du - dd);
 
     vec3 nc = read_normal(frag_uv);
     float normal_edge = (1.0 - dot(nc, read_normal(frag_uv + dx)))

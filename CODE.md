@@ -6,16 +6,20 @@
 
 ## Organisation générale
 
-Le projet produit **deux binaires** qui partagent la majorité du code :
+Le projet produit **trois binaires** qui partagent la majorité du code :
 
 | Binaire | `main` | Scène |
 |---|---|---|
-| `cartoon` | `src/main.cpp` | désert procédural (buttes, herbe, cailloux) + cycle jour/nuit |
-| `zelda`   | `src/main_zelda.cpp` | modèles externes (Toon Link + bateau) chargés via Assimp |
+| `desert` | `src/main_desert.cpp` | désert procédural (buttes, herbe, cailloux) + sol/ombres |
+| `meshes` | `src/main_meshes.cpp` | 3 primitives (sphère/cylindre/tore) tournant sur un sol |
+| `pont`   | `src/main_pont.cpp`   | modèle glTF externe (pont japonais) chargé via Assimp |
 
-Fichiers **partagés** : `matrix4`, `camera`, `program`, `mesh`, `texture` + les shaders.
-`mesh_loader.cpp` (Assimp) n'est lié qu'à `zelda`. Pipeline de rendu en **2 passes** :
+Fichiers **partagés** : `matrix4`, `camera`, `program`, `mesh`, `texture`, `style.hh` + les
+shaders. `mesh_loader.cpp` (Assimp) n'est lié qu'à `pont`. Pipeline de rendu en **2 passes** :
 passe 1 = cel shading + ombres → FBO ; passe 2 = fond + contour en post-process.
+
+`style.hh` regroupe la **table des 3 presets de style** (Croquis encre / Pop comics / Phong)
+partagée par les trois binaires.
 
 ---
 
@@ -57,7 +61,14 @@ point `center` déplaçable.
 `class Mesh` = un VAO + 3 VBO (positions, normales, UV) + une liste de `SubMesh`
 (plages de sommets texturées, pour les modèles chargés).
 
-**Générateurs procéduraux** (renvoient un `Mesh*`) — uniquement ceux utilisés par la scène :
+**Générateurs procéduraux** (renvoient un `Mesh*`) — détail de la **construction** en §2.9
+de `GUIDE_COMPLET.md` :
+- `make_sphere(rings,sectors,radius)` : **sphère UV** par paramétrage `(φ,θ)` — un quad par
+  cellule lat/long, deux triangles, normale = position normalisée.
+- `make_cylinder(n,radius,height,with_caps)` : **cylindre** — `n` quads sur le flanc (normale
+  radiale) + deux disques en éventail pour les capuchons haut/bas (normale ±Y).
+- `make_torus(rings,sectors,R,r)` : **tore** par paramétrage `(u,v)` autour du grand rayon `R`
+  et du tube `r` ; normale analytique `(cos v cos u, sin v, cos v sin u)`.
 - `make_plane(half, y)` : grand quad horizontal (le sol).
 - `make_rock(rings,sectors,radius,jitter,seed)` : rocher facetté = sphère basse résolution
   déformée par un bruit, **normales plates** (aspect low-poly anguleux).
@@ -70,7 +81,12 @@ point `center` déplaçable.
 - `upload()` : envoie les VBO au GPU + charge la texture de chaque `SubMesh`.
 - `draw()` : dessine tout le mesh (`glDrawArrays`).
 - `draw_textured(ul_use_tex)` : dessine **sous-mesh par sous-mesh**, en liant la texture de chacun.
-- `push_vertex(...)`, `push_submesh(...)` : API d'ajout utilisée par le loader de modèles.
+- `draw_colored(ul_use_tex, ul_obj_color)` : dessine sous-mesh par sous-mesh en appliquant la
+  **couleur diffuse** lue par matériau (aplat cartoon) — utilisé pour le modèle glTF du pont.
+- `bounds(mn, mx)` : **boîte englobante** locale (sur les positions) → sert à **auto-centrer et
+  mettre à l'échelle** un modèle chargé (cf. `main_pont.cpp`).
+- `push_vertex(...)`, `push_submesh(...)` : API d'ajout utilisée par le loader de modèles
+  (`push_submesh` existe avec et sans couleur de matériau).
 - `vertex_count()` : nombre de sommets.
 - `load_from_file(path)` : **implémentée dans `mesh_loader.cpp`** (voir ci-dessous).
 
@@ -79,35 +95,59 @@ point `center` déplaçable.
 - `Mesh::load_from_file(path)` : charge un modèle externe (OBJ/glTF/DAE) en un `Mesh`.
 - `process_node(...)` (interne) : parcours récursif de la hiérarchie du modèle.
 
-## `main.cpp` — application désert (`cartoon`)
+## `style.hh` — presets de style (partagé)
+
+`struct Style` + table `g_styles[]` des **3 presets** (Croquis encre = hachures · Pop comics =
+aplats · Phong = comparaison). Chaque style fixe : nombre de bandes, hachures on/off, ambiant,
+seuils/force spéculaire, couleur et épaisseur du contour (près/loin), et fond (dégradé).
+Inclus par les trois `main`, qui gardent chacun leur `apply_style(i)` (recopie bandes/hachures
+dans les globals → `+/-` et `H` affinent par-dessus).
+
+## `main_desert.cpp` — application désert (`desert`)
 
 - `read_file(path)` : lit un fichier shader en `std::string`.
 - `initglut/initglew/initGL` : contexte OpenGL 4.5 core, états (depth test, culling…).
 - `initshaders()` : compile les 3 programmes (cel, post, shadow) et récupère les *uniform locations*.
 - `init_fbo(w,h)` : (re)crée le FBO et ses cibles (couleur, normales, profondeur) à la taille fenêtre.
 - `initobjects()` : génère les meshes de la scène (buttes, herbe, cailloux, sol).
-- `initPOV()` : matrice de projection (frustum). `timer()` : avance `g_time` (× `g_timescale`).
+- `initPOV()` : matrice de projection (frustum). `timer()` : redessine quand l'animation est active.
 - `apply_style(i)` : applique un preset de style (bandes, hachures, couleurs…).
 - `draw_cel(mesh, model)` / `draw_shadow(mesh, mvp, world)` : envoient les matrices et dessinent.
-- `display()` : **cœur du rendu** — calcule le **cycle jour/nuit** (direction/couleur du
-  soleil, ciel, ambiante selon `g_time`), construit la **liste d'instances** de la scène,
-  fait la passe 1 (sol + objets cel + ombres → FBO) puis la passe 2 (fond + contour → écran).
-- `reshape(w,h)` : viewport + recrée le FBO. `keyboard(...)` : presets, hachures, vitesse jour/nuit, pause.
+- `display()` : **cœur du rendu** — **lumière directionnelle fixe** (`LIGHT_DIR`), construit la
+  **liste d'instances** de la scène, fait la passe 1 (sol + objets cel + ombres → FBO) puis la
+  passe 2 (fond + contour → écran).
+- `reshape(w,h)` : viewport + recrée le FBO. `keyboard(...)` : presets (`1-3`), hachures, pause.
 - `main()` : enchaîne les init, règle la caméra, lance `glutMainLoop`.
 
-## `main_zelda.cpp` — application Zelda (`zelda`)
+> Le **cycle jour/nuit** (soleil tournant) a été retiré : l'éclairage est désormais une
+> **direction fixe**, et le fond vient du preset de style.
 
-Même squelette que `main.cpp`, mais :
-- `initobjects()` charge **Toon Link** (`Mesh::load_from_file("assets/Toon Link/toonlink.obj")`)
-  et le **bateau** (`assets/red_lion/scene.gltf`), + une texture d'eau pour le sol.
-- `display()` dessine ces modèles avec `draw_textured` (textures par sous-mesh) et reprend
-  le même cycle jour/nuit. Démarre en **style 3** et caméra tournée par défaut.
-- Touches supplémentaires pour ajuster position/échelle des modèles (debug).
+## `main_meshes.cpp` — application primitives (`meshes`)
+
+Même squelette que `main_desert.cpp` :
+- `initobjects()` génère un **sol** (`make_plane`) + une **sphère**, un **cylindre** et un
+  **tore** procéduraux.
+- `display()` fait tourner les trois primitives, projette leurs **ombres** sur le sol (même
+  matrice d'ombre que le désert), puis applique cel + contour. Démarre en **style 2** (pop comics).
+
+## `main_pont.cpp` — application pont japonais (`pont`)
+
+Même squelette, mais charge un **modèle externe** :
+- `initobjects()` appelle `Mesh::load_from_file("assets/maquette/scene.gltf")`, puis utilise
+  `Mesh::bounds()` pour **auto-centrer et mettre le modèle à l'échelle** (tient dans une boîte
+  de ~3 unités quelle que soit l'échelle native).
+- `display()` fait lentement tourner le modèle et le dessine avec `draw_colored` (couleur par
+  matériau). Démarre en **style 1** (hachures). Réglages spécifiques passés aux shaders :
+  `hatch_thr` (réduit la couverture des hachures) et `two_sided` (redresse les normales
+  incohérentes de l'export — voir §Assimp). Touche **Espace** = rotation on/off.
 
 ## Shaders (`shaders/*.glsl`)
 
 - `cel_vertex` / `cel_fragment` : **cel shading** (diffus quantifié en N bandes + spéculaire
   seuillé) ; écrit la couleur **et** la normale (G-buffer) ; ajoute les **hachures** d'écran.
+  Deux uniforms de réglage : `hatch_thr` (multiplie les seuils de hachures — `<1` = moins de
+  hachures, utilisé par le pont) et `two_sided` (retourne la normale vers la caméra si elle
+  pointe à l'envers — pour les modèles aux normales incohérentes).
 - `shadow_vertex` / `shadow_fragment` : **ombre projetée** ; calcule la position monde au sol
   et **clippe** l'ombre aux bornes du terrain (si `ground_half > 0`).
 - `post_vertex` / `post_fragment` : passe plein écran ; **fond gradient** + **détection de
@@ -119,7 +159,9 @@ Même squelette que `main.cpp`, mais :
 
 **Assimp** (*Open Asset Import Library*) est une bibliothèque qui lit des dizaines de formats
 3D (OBJ, glTF, DAE/Collada, FBX…) et les expose sous une **structure commune** en mémoire.
-On l'utilise dans `zelda` pour charger Toon Link et le bateau, sans écrire un parseur par format.
+On l'utilise dans `pont` pour charger le modèle **glTF** du pont japonais, sans écrire un
+parseur par format. C'est exactement le même loader qu'il s'agisse d'OBJ ou de glTF :
+**aucune brique spécifique au glTF**, Assimp s'en charge.
 
 ### Ce qu'Assimp renvoie
 
@@ -130,7 +172,8 @@ On l'utilise dans `zelda` pour charger Toon Link et le bateau, sans écrire un p
 - `scene->mMeshes[]` : les **maillages** (`aiMesh`) : sommets (`mVertices`), normales
   (`mNormals`), coordonnées de texture (`mTextureCoords[0]`), faces (`mFaces`, indices).
 - `scene->mMaterials[]` : les **matériaux** ; on y lit la **texture diffuse**
-  (`GetTexture(aiTextureType_DIFFUSE, …)`).
+  (`GetTexture(aiTextureType_DIFFUSE, …)`) **et la couleur diffuse** (`AI_MATKEY_COLOR_DIFFUSE`)
+  pour les modèles sans texture (cas du pont — aplats de couleur par matériau).
 
 ### Les flags de post-traitement (à `ReadFile`)
 
@@ -150,19 +193,29 @@ On l'utilise dans `zelda` pour charger Toon Link et le bateau, sans écrire un p
      et aux normales (matrice **inverse-transposée**, ici approximée par transposée + renormalisation) ;
    - lit l'UV (ou (0,0) à défaut) ;
    - empile chaque sommet via `m->push_vertex(...)` ;
-   - lit le **chemin de la texture diffuse** du matériau → enregistre un `SubMesh`
-     (plage de sommets + chemin) via `m->push_submesh(...)` ;
+   - lit le **chemin de la texture diffuse** *et* la **couleur diffuse** du matériau → enregistre
+     un `SubMesh` (plage de sommets + chemin + couleur) via `m->push_submesh(...)` ;
    - recurse sur les nœuds enfants.
-4. Au final, `Mesh::upload()` charge la texture de chaque `SubMesh`, et `draw_textured`
-   dessine chaque sous-mesh en liant sa texture (`use_texture = 1`).
+4. Au final, `Mesh::upload()` charge la texture de chaque `SubMesh` ; `draw_textured` lie la
+   texture (`use_texture = 1`), tandis que `draw_colored` applique la **couleur de matériau**
+   (cas du pont, sans texture).
+
+### Couleur diffuse & espace colorimétrique
+
+Les couleurs glTF (`baseColorFactor` / `diffuseFactor`) sont en espace **linéaire** et souvent
+très basses (un bois à `0.06`…). Affichées brutes, elles paraissent presque noires. On les
+**encode donc en sRGB approché** (`pow(c, 1/2.2)`) à la lecture, sinon le modèle est trop sombre.
+
+### Normales incohérentes (`two_sided`)
+
+Le modèle du pont est un export **double-face** aux normales incohérentes : beaucoup de faces
+visibles ont une normale qui pointe à l'opposé de la caméra → elles seraient éclairées à 0
+(sombres et entièrement hachurées). Le shader cel, via l'uniform `two_sided`, **retourne la
+normale vers le spectateur** quand elle pointe à l'envers — ce qui corrige éclairage et hachures.
+Activé seulement pour le pont.
 
 ### Pourquoi un fichier séparé
 
 `mesh_loader.cpp` est le **seul** à inclure/lier Assimp. Ainsi `mesh.hh`/`mesh.cpp` n'ont
-aucune dépendance Assimp, et le binaire **`cartoon` se construit sans Assimp**. Le `Makefile`
-ne compile/lie `zelda` que si `pkg-config` détecte Assimp (`sudo pacman -S assimp` sur Arch).
-
-### Limite connue
-
-Les fichiers de **texture** (`*.png`) doivent être présents à côté des modèles. Le modèle
-charge sa géométrie même si une texture manque (rendu non texturé pour le sous-mesh concerné).
+aucune dépendance Assimp, et les binaires **`desert` et `meshes` se construisent sans Assimp**.
+Le `Makefile` ne compile/lie `pont` que si `pkg-config` détecte Assimp (`sudo pacman -S assimp`).

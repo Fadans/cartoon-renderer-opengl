@@ -12,12 +12,13 @@ Cours/
 *.png
 *.jpg
 *.webp
-# …mais on GARDE les textures des modèles Zelda (nécessaires au binaire zelda)
+# …mais on GARDE les textures des modèles chargés par Assimp
 !Projet/assets/**/*.png
 
 # ── Binaires compilés ─────────────────────────────────────────────────────
-Projet/cartoon
-Projet/zelda
+Projet/desert
+Projet/meshes
+Projet/pont
 **/*.o
 
 # ── Divers ────────────────────────────────────────────────────────────────
@@ -27,3 +28,8 @@ Projet/zelda
 *.tmp
 .vscode/
 .idea/
+
+# ── Doublons du modèle du pont, déjà dans Projet/assets/maquette/ ─────────
+/license.txt
+/scene.bin
+/scene.gltf
