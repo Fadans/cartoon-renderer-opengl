@@ -119,3 +119,12 @@ Projet/
 - Les shaders `.glsl` sont **lus à l'exécution** : pas besoin de recompiler, juste relancer.
 - `GL error 1280` au démarrage : bénin (`glewInit()` en profil core).
 - Capture d'écran auto indisponible sous Wayland/Hyprland → vérification visuelle manuelle.
+
+## Crédits
+
+Le modèle 3D du pont japonais (`Projet/assets/maquette/`) est
+[« Japanese Bridge Garden »](https://sketchfab.com/3d-models/japanese-bridge-garden-d122e17593eb4012913cde927486d15a)
+par [kristenlee](https://sketchfab.com/kristenlee), sous licence
+[CC-BY-4.0](http://creativecommons.org/licenses/by/4.0/).
+
+Le chargeur d'images utilise [stb_image](https://github.com/nothings/stb) (domaine public).
